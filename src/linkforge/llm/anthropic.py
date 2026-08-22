@@ -1,35 +1,38 @@
 from anthropic import Anthropic
-from Model_Interface import basic_llm 
+from linkforge.llm.base import LLM, LLMResponse, ToolCall
 from typing import List
 import json
 from anthropic.types import TextBlock, ToolUseBlock
 
 
-class AnthropicInterface(basic_llm.LLM):
+class AnthropicInterface(LLM):
     def __init__(self, api_key: str):
-        self.client = Anthropic(api_key)
+        self.client = Anthropic(api_key=api_key)
 
-    def _convert_tool_calls(self, tool_calls: List[basic_llm.ToolCall]) -> List[dict]:
-        """将工具调用信息转换为Anthropic的格式"""
+    def _convert_tool_calls(self, tool_calls: List[ToolCall]) -> List[dict]:
+        """Convert tool calls to Anthropic format"""
         anthropic_tool_calls = []
         for tool_call in tool_calls:
             anthropic_tool_calls.append({
                 "type": "tool_use",
                 "id": tool_call.id,
                 "name": tool_call.name,
-                "input": tool_call.arguments # Anthropic的input直接接收dict
+                "input": tool_call.arguments  # Anthropic's input accepts dict directly
             })
         return anthropic_tool_calls
 
-    def _convert_messages(self, role, content: str | None = None, tool_calls: List[basic_llm.ToolCall] | None = None, tool_call_id: str | None = None) -> dict:
+    def _convert_messages(self, role: str, content: str | None = None, 
+                         tool_calls: List[ToolCall] | None = None, 
+                         tool_call_id: str | None = None) -> dict:
         if role == "system":
-            # Anthropic的system prompt不放入messages，这里返回None，在call_model中单独提取
+            # Anthropic's system prompt is not part of messages, return None here
+            # It will be extracted in call_model
             return None 
         elif role == "user":
             return {"role": role, "content": content}
         elif role == "assistant":
             if tool_calls:
-                # assistant的消息中，需要将文本和工具调用组合成content块列表
+                # In Anthropic, assistant messages need to combine text and tool calls in content blocks
                 content_blocks = []
                 if content:
                     content_blocks.append({"type": "text", "text": content})
@@ -39,7 +42,7 @@ class AnthropicInterface(basic_llm.LLM):
                 return {"role": role, "content": content}
         elif role == "tool":
             if tool_call_id:
-                # tool角色在Anthropic中为user角色下的tool_result块
+                # In Anthropic, tool results appear as tool_result blocks under user role
                 return {
                     "role": "user",
                     "content": [
@@ -51,26 +54,31 @@ class AnthropicInterface(basic_llm.LLM):
                     ]
                 }
             else:
-                raise ValueError("role='tool'时必须提供tool_call_id, 否则无法确定工具结果对应哪次调用")
+                raise ValueError("role='tool' requires tool_call_id to match tool result to the call")
         else:
-            raise ValueError(f"不支持的role类型: {role}")
+            raise ValueError(f"Unsupported role type: {role}")
 
-    def call_model(self, model: str, message: list, tools: list) -> basic_llm.LLMRes:
+    def call_model(self, model: str, message: list, tools: list) -> LLMResponse:
         system_prompt = None
         new_message = []
-        for item in message: # 提取message中的system prompt和用户输入
+        for item in message:  # Extract system prompt and user input from message
             if item["role"] == "system":
                 system_prompt = item["content"]
             else:
                 new_message.append(item)
                 
-        message_t = self.client.messages.create(model=model, system=system_prompt, messages=new_message, tools=tools)
+        message_t = self.client.messages.create(
+            model=model, 
+            system=system_prompt, 
+            messages=new_message, 
+            tools=tools
+        )
         text = None
         tool_calls = []
         for item in message_t.content:
             if isinstance(item, TextBlock):
                 text = item.text
             elif isinstance(item, ToolUseBlock):
-                tool_calls.append(basic_llm.ToolCall(item.id, item.name, item.input))
+                tool_calls.append(ToolCall(item.id, item.name, item.input))
 
-        return basic_llm.LLMRes(content=text, tool_calls=tool_calls)
+        return LLMResponse(content=text, tool_calls=tool_calls)
