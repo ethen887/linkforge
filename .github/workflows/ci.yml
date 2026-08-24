@@ -28,7 +28,7 @@ jobs:
 
       # 下载代码
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
 
       # 安装Python
