@@ -2,7 +2,9 @@
 
 These tests do NOT make real API calls. They only verify the pure conversion logic.
 """
+
 import pytest
+
 from linkforge.llm.base import ToolCall
 
 
@@ -11,6 +13,7 @@ class TestAnthropicMessageConversion:
 
     def _make_interface(self):
         from linkforge.llm.anthropic import AnthropicInterface
+
         instance = AnthropicInterface.__new__(AnthropicInterface)
         return instance
 
@@ -33,11 +36,7 @@ class TestAnthropicMessageConversion:
     def test_assistant_with_tools_uses_content_blocks(self):
         iface = self._make_interface()
         tc = ToolCall(id="tool_1", name="get_weather", arguments={"city": "Shanghai"})
-        result = iface._convert_messages(
-            role="assistant",
-            content="Let me check",
-            tool_calls=[tc]
-        )
+        result = iface._convert_messages(role="assistant", content="Let me check", tool_calls=[tc])
         assert result["role"] == "assistant"
         assert isinstance(result["content"], list)
         # Should contain both a text block and a tool_use block
@@ -47,11 +46,7 @@ class TestAnthropicMessageConversion:
     def test_tool_message_becomes_user_with_tool_result(self):
         """Anthropic tool results are returned as user messages with tool_result blocks."""
         iface = self._make_interface()
-        result = iface._convert_messages(
-            role="tool",
-            content="sunny 25C",
-            tool_call_id="tool_1"
-        )
+        result = iface._convert_messages(role="tool", content="sunny 25C", tool_call_id="tool_1")
         assert result["role"] == "user"
         assert isinstance(result["content"], list)
         assert result["content"][0]["type"] == "tool_result"
@@ -73,11 +68,13 @@ class TestAnthropicMessageConversion:
 class TestAnthropicToolCallsConversion:
     def test_convert_empty_list(self):
         from linkforge.llm.anthropic import AnthropicInterface
+
         instance = AnthropicInterface.__new__(AnthropicInterface)
         assert instance._convert_tool_calls([]) == []
 
     def test_convert_uses_input_not_arguments(self):
         from linkforge.llm.anthropic import AnthropicInterface
+
         instance = AnthropicInterface.__new__(AnthropicInterface)
         tc = ToolCall(id="t1", name="get_weather", arguments={"city": "Beijing"})
         result = instance._convert_tool_calls([tc])

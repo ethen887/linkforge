@@ -1,6 +1,7 @@
 """Quick verification that all migrated modules have valid Python syntax."""
-import py_compile
+
 import os
+import py_compile
 import sys
 
 SRC_DIR = os.path.join(os.path.dirname(__file__), "src", "linkforge")

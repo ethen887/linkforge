@@ -1,8 +1,9 @@
-from anthropic import Anthropic
-from linkforge.llm.base import LLM, LLMResponse, ToolCall
 from typing import List
-import json
+
+from anthropic import Anthropic
 from anthropic.types import TextBlock, ToolUseBlock
+
+from linkforge.llm.base import LLM, LLMResponse, ToolCall
 
 
 class AnthropicInterface(LLM):
@@ -13,21 +14,27 @@ class AnthropicInterface(LLM):
         """Convert tool calls to Anthropic format"""
         anthropic_tool_calls = []
         for tool_call in tool_calls:
-            anthropic_tool_calls.append({
-                "type": "tool_use",
-                "id": tool_call.id,
-                "name": tool_call.name,
-                "input": tool_call.arguments  # Anthropic's input accepts dict directly
-            })
+            anthropic_tool_calls.append(
+                {
+                    "type": "tool_use",
+                    "id": tool_call.id,
+                    "name": tool_call.name,
+                    "input": tool_call.arguments,  # Anthropic's input accepts dict directly
+                }
+            )
         return anthropic_tool_calls
 
-    def _convert_messages(self, role: str, content: str | None = None, 
-                         tool_calls: List[ToolCall] | None = None, 
-                         tool_call_id: str | None = None) -> dict:
+    def _convert_messages(
+        self,
+        role: str,
+        content: str | None = None,
+        tool_calls: List[ToolCall] | None = None,
+        tool_call_id: str | None = None,
+    ) -> dict:
         if role == "system":
             # Anthropic's system prompt is not part of messages, return None here
             # It will be extracted in call_model
-            return None 
+            return None
         elif role == "user":
             return {"role": role, "content": content}
         elif role == "assistant":
@@ -49,12 +56,14 @@ class AnthropicInterface(LLM):
                         {
                             "type": "tool_result",
                             "tool_use_id": tool_call_id,
-                            "content": content or ""
+                            "content": content or "",
                         }
-                    ]
+                    ],
                 }
             else:
-                raise ValueError("role='tool' requires tool_call_id to match tool result to the call")
+                raise ValueError(
+                    "role='tool' requires tool_call_id to match tool result to the call"
+                )
         else:
             raise ValueError(f"Unsupported role type: {role}")
 
@@ -66,12 +75,9 @@ class AnthropicInterface(LLM):
                 system_prompt = item["content"]
             else:
                 new_message.append(item)
-                
+
         message_t = self.client.messages.create(
-            model=model, 
-            system=system_prompt, 
-            messages=new_message, 
-            tools=tools
+            model=model, system=system_prompt, messages=new_message, tools=tools
         )
         text = None
         tool_calls = []

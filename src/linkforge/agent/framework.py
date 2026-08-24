@@ -1,79 +1,121 @@
-import json
-from linkforge.llm.base import LLM, LLMResponse, ToolCall
-from typing import List, Dict, Any, Callable
+from typing import Any, Callable
+
+from linkforge.llm.base import LLM
 
 
 class AgentTool:
-    def __init__(self, name: str, parameters: dict, description: str, function: Callable):
+    def __init__(
+        self,
+        name: str,
+        parameters: dict[str, Any],
+        description: str,
+        function: Callable[..., Any],
+    ):
         self.name = name
         self.parameters = parameters
         self.description = description
         self.function = function
-    
-    def func_json(self) -> Dict[str, Any]:  # Create JSON specification for tool, so model knows what it can do
+
+    def func_json(self) -> dict[str, Any]:
+        """Create the JSON tool specification sent to the model."""
         return {
             "type": "function",
             "function": {
                 "name": self.name,
                 "parameters": self.parameters,
-                "description": self.description
-            }
+                "description": self.description,
+            },
         }
 
 
-class RecAgent:  # An agent class handles a specific type of questions, determined by system prompt
-    def __init__(self, system_prompt: str, client: LLM, tools: List[AgentTool], model: str):
+class RecAgent:
+    """Agent that handles tasks according to a specific system prompt."""
+
+    def __init__(
+        self,
+        system_prompt: str,
+        client: LLM,
+        tools: list[AgentTool],
+        model: str,
+    ):
         self.system_prompt = system_prompt
         self.client = client
         self.tools = tools
         self.model = model
-        self.tools_map = {tool.name: tool for tool in tools}  # Create tool index map with tool names as keys and tool objects as values
-        self.tools_json = [tool.func_json() for tool in tools]  # Convert each tool in tools list to JSON format to send to model
-    
-    def run(self, prompt: str, max_steps: int = 5) -> str:  # Default to 5 steps maximum for a task
+
+        self.tools_map = {tool.name: tool for tool in tools}
+        self.tools_json = [tool.func_json() for tool in tools]
+
+    def run(self, prompt: str, max_steps: int = 5) -> str | None:
+        """Run the agent for at most ``max_steps`` iterations."""
         history = [
-            self.client._convert_messages(role="system", content=self.system_prompt),
-            self.client._convert_messages(role="user", content=prompt)
-        ]  # Initialize history with system prompt and user input
-        
-        for step in range(max_steps):
-            response = self.client.call_model(self.model, history, tools=self.tools_json)
+            self.client._convert_messages(
+                role="system",
+                content=self.system_prompt,
+            ),
+            self.client._convert_messages(
+                role="user",
+                content=prompt,
+            ),
+        ]
+
+        for _ in range(max_steps):
+            response = self.client.call_model(
+                self.model,
+                history,
+                tools=self.tools_json,
+            )
+
             text = response.content
             tool_calls = response.tool_calls
-            
-            if tool_calls:  # Has tool calls
+
+            if tool_calls:
                 history.append(
                     self.client._convert_messages(
-                        role="assistant", 
-                        tool_calls=tool_calls, 
-                        content=text
+                        role="assistant",
+                        tool_calls=tool_calls,
+                        content=text,
                     )
-                )  # Add tool call info to history
-                
+                )
+
                 for tool_call in tool_calls:
                     tool_name = tool_call.name
+
                     try:
                         tool_arguments = tool_call.arguments
-                        tool = self.tools_map[tool_name]  # Get tool function from index map
-                        result = tool.function(**tool_arguments)  # Call tool function with arguments
-                        print(f"Tool call successful, tool name: {tool_name}, arguments: {tool_arguments}, result: {result}")
+                        tool = self.tools_map[tool_name]
+                        result = tool.function(**tool_arguments)
+
+                        print(
+                            "Tool call successful, "
+                            f"tool name: {tool_name}, "
+                            f"arguments: {tool_arguments}, "
+                            f"result: {result}"
+                        )
                     except Exception as e:
                         result = f"Error: {e}, tool execution failed"
-                        print(f"Error: {e}, tool execution failed")
-                    
+                        print(result)
+
                     history.append(
                         self.client._convert_messages(
-                            role="tool", 
-                            content=str(result), 
-                            tool_call_id=tool_call.id
+                            role="tool",
+                            content=str(result),
+                            tool_call_id=tool_call.id,
                         )
-                    )  # Add tool call result to history
-                    continue
-            else:  # No tool calls
+                    )
+
+            else:
                 history.append(
-                    self.client._convert_messages(role="assistant", content=text)
+                    self.client._convert_messages(
+                        role="assistant",
+                        content=text,
+                    )
                 )
-                print(f"No function was called for this task, model only outputs text content: {text}")
+
+                print(
+                    "No function was called for this task, "
+                    f"model only outputs text content: {text}"
+                )
                 return text
-        
+
         return f"Task execution exceeded {max_steps} steps, task failed"

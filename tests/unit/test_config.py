@@ -1,7 +1,12 @@
 """Unit tests for the configuration module."""
+
 import pytest
+
 from linkforge.config.settings import (
-    ModelConfig, MODEL_PROVIDERS, create_model_config, append_provider
+    MODEL_PROVIDERS,
+    ModelConfig,
+    append_provider,
+    create_model_config,
 )
 
 
@@ -12,10 +17,7 @@ class TestModelConfig:
 
     def test_explicit_protocol(self):
         cfg = ModelConfig(
-            api_key="test",
-            base_url="https://example.com",
-            model_name="m",
-            protocol="anthropic"
+            api_key="test", base_url="https://example.com", model_name="m", protocol="anthropic"
         )
         assert cfg.protocol == "anthropic"
 
@@ -72,7 +74,7 @@ class TestAppendProvider:
             display_name="Test Provider",
             base_url="https://test.example.com",
             protocol="openai",
-            default_models="test-model"
+            default_models="test-model",
         )
         assert "test_provider" in MODEL_PROVIDERS
         assert MODEL_PROVIDERS["test_provider"]["display_name"] == "Test Provider"

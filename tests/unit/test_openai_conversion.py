@@ -2,7 +2,9 @@
 
 These tests do NOT make real API calls. They only verify the pure conversion logic.
 """
+
 import pytest
+
 from linkforge.llm.base import ToolCall
 
 
@@ -12,6 +14,7 @@ class TestOpenAIMessageConversion:
     def _make_interface(self):
         # Import here to avoid module-level side effects
         from linkforge.llm.openai import OpenAIInterface
+
         # Bypass __init__ which would try to create an OpenAI client
         instance = OpenAIInterface.__new__(OpenAIInterface)
         return instance
@@ -34,11 +37,7 @@ class TestOpenAIMessageConversion:
     def test_assistant_message_with_tools(self):
         iface = self._make_interface()
         tc = ToolCall(id="call_1", name="get_weather", arguments={"city": "Beijing"})
-        result = iface._convert_messages(
-            role="assistant",
-            content="Let me check",
-            tool_calls=[tc]
-        )
+        result = iface._convert_messages(role="assistant", content="Let me check", tool_calls=[tc])
         assert result["role"] == "assistant"
         assert result["content"] == "Let me check"
         assert "tool_calls" in result
@@ -53,11 +52,7 @@ class TestOpenAIMessageConversion:
 
     def test_tool_message_with_id(self):
         iface = self._make_interface()
-        result = iface._convert_messages(
-            role="tool",
-            content="sunny",
-            tool_call_id="call_xyz"
-        )
+        result = iface._convert_messages(role="tool", content="sunny", tool_call_id="call_xyz")
         assert result["role"] == "tool"
         assert result["tool_call_id"] == "call_xyz"
         assert result["content"] == "sunny"
@@ -72,11 +67,7 @@ class TestOpenAIMessageConversion:
         """Ensure unicode arguments are serialized correctly."""
         iface = self._make_interface()
         tc = ToolCall(id="1", name="fn", arguments={"city": "杭州"})
-        result = iface._convert_messages(
-            role="assistant",
-            content=None,
-            tool_calls=[tc]
-        )
+        result = iface._convert_messages(role="assistant", content=None, tool_calls=[tc])
         args_str = result["tool_calls"][0]["function"]["arguments"]
         assert "杭州" in args_str
 
@@ -84,11 +75,13 @@ class TestOpenAIMessageConversion:
 class TestOpenAIToolCallsConversion:
     def test_convert_empty_list(self):
         from linkforge.llm.openai import OpenAIInterface
+
         instance = OpenAIInterface.__new__(OpenAIInterface)
         assert instance._convert_tool_calls([]) == []
 
     def test_convert_single_call(self):
         from linkforge.llm.openai import OpenAIInterface
+
         instance = OpenAIInterface.__new__(OpenAIInterface)
         tc = ToolCall(id="c1", name="get_weather", arguments={"city": "Beijing"})
         result = instance._convert_tool_calls([tc])

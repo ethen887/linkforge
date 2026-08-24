@@ -1,6 +1,8 @@
 """Fake LLM implementations for testing without making real API calls."""
-from linkforge.llm.base import LLM, LLMResponse, ToolCall
+
 from typing import List, Optional
+
+from linkforge.llm.base import LLM, LLMResponse, ToolCall
 
 
 class FakeLLM(LLM):
@@ -23,14 +25,18 @@ class FakeLLM(LLM):
             {
                 "id": tc.id,
                 "type": "function",
-                "function": {"name": tc.name, "arguments": str(tc.arguments)}
+                "function": {"name": tc.name, "arguments": str(tc.arguments)},
             }
             for tc in tool_calls
         ]
 
-    def _convert_messages(self, role: str, content: str | None = None,
-                         tool_calls: List[ToolCall] | None = None,
-                         tool_call_id: str | None = None) -> dict:
+    def _convert_messages(
+        self,
+        role: str,
+        content: str | None = None,
+        tool_calls: List[ToolCall] | None = None,
+        tool_call_id: str | None = None,
+    ) -> dict:
         """Convert messages in a simple format compatible with the fake."""
         msg = {"role": role}
         if content is not None:
@@ -63,9 +69,11 @@ class RecordingFakeLLM(FakeLLM):
         self.calls = []
 
     def call_model(self, model: str, messages: list, tools: list) -> LLMResponse:
-        self.calls.append({
-            "model": model,
-            "messages": list(messages),
-            "tools": list(tools),
-        })
+        self.calls.append(
+            {
+                "model": model,
+                "messages": list(messages),
+                "tools": list(tools),
+            }
+        )
         return super().call_model(model, messages, tools)

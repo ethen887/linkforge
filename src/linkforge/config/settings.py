@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 @dataclass
@@ -8,6 +8,7 @@ class ModelConfig:
     Model service configuration.
     Each created object represents a model invocation scheme.
     """
+
     api_key: str
     base_url: str
     model_name: str
@@ -43,11 +44,13 @@ MODEL_PROVIDERS: Dict[str, Dict[str, Any]] = {
 }
 
 
-def append_provider(provider: str, 
-                    display_name: str, 
-                    base_url: str, 
-                    protocol: str = "openai", 
-                    default_models: str = None) -> Dict[str, Dict[str, Any]]:
+def append_provider(
+    provider: str,
+    display_name: str,
+    base_url: str,
+    protocol: str = "openai",
+    default_models: str = None,
+) -> Dict[str, Dict[str, Any]]:
     MODEL_PROVIDERS[provider] = {
         "display_name": display_name,
         "base_url": base_url,
@@ -67,5 +70,5 @@ def create_model_config(provider: str, api: str, model_name: str = None) -> Mode
         api_key=api,
         base_url=provider_info["base_url"],
         model_name=model_name,
-        protocol=provider_info["protocol"]
+        protocol=provider_info["protocol"],
     )
