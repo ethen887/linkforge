@@ -1,0 +1,80 @@
+name: LinkForge CI
+
+# 什么时候触发
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+# GitHub权限
+permissions:
+  contents: read
+
+
+jobs:
+
+  quality-check:
+
+    name: Code Quality Check
+
+    runs-on: ubuntu-latest
+
+
+    steps:
+
+      # 下载代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # 安装Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+
+      # 安装uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+
+      # 安装项目依赖
+      - name: Install dependencies
+        run:
+
+          uv sync --locked
+
+
+      # 检查代码格式
+      - name: Check formatting
+        run:
+
+          uv run ruff format --check .
+
+
+      # 检查代码规范
+      - name: Lint
+        run:
+
+          uv run ruff check .
+
+
+      # 类型检查
+      - name: Type check
+        run:
+
+          uv run mypy src
+
+
+      # 自动化测试
+      - name: Run tests
+        run:
+
+          uv run pytest

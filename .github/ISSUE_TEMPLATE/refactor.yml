@@ -1,0 +1,67 @@
+name: 重构建议
+description: 提出不改变外部行为的内部代码结构调整
+title: "[Refactor] "
+body:
+  - type: textarea
+    id: target
+    attributes:
+      label: 重构对象
+      description: 需要重构哪个目录、模块、类或函数？
+      placeholder: 例如：src/linkforge/... 中的某个模块
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_problem
+    attributes:
+      label: 当前问题
+      description: 当前代码存在哪些结构问题？
+      placeholder: |
+        例如：
+        - 职责过多
+        - 模块耦合严重
+        - 重复代码较多
+        - 接口边界不清晰
+        - 难以进行单元测试
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_change
+    attributes:
+      label: 建议的调整
+      description: 准备怎样重新组织代码？
+    validations:
+      required: true
+
+  - type: textarea
+    id: unchanged_behavior
+    attributes:
+      label: 必须保持不变的行为
+      description: 重构完成后，哪些外部行为和接口不能发生变化？
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: 验证方式
+      description: 如何证明重构没有破坏原有行为？
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: 风险
+      description: 本次重构可能影响哪些模块？
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: 提交确认
+      options:
+        - label: 本次建议主要改变内部结构，不增加新的业务功能。
+          required: true
+        - label: 我已经说明需要保持不变的外部行为。
+          required: true
