@@ -1,15 +1,3 @@
-
-PR模板会自动填入新建PR的描述框，用于规范开发者说明修改原因、测试结果和风险。:contentReference[oaicite:2]{index=2}
-
----
-
-# 3. `.github/ISSUE_TEMPLATE/bug.yml`
-
-作用：规范别人如何报告 Bug。
-
-直接覆盖为：
-
-```yaml
 name: Bug 报告
 description: 报告一个可以复现的 LinkForge 问题
 title: "[Bug] "
