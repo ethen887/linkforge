@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 
 @dataclass
@@ -16,7 +16,7 @@ class ModelConfig:
 
 
 # Model provider configurations
-MODEL_PROVIDERS: Dict[str, Dict[str, Any]] = {
+MODEL_PROVIDERS: dict[str, dict[str, Any]] = {
     "qwen": {
         "display_name": "阿里云百炼",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -48,9 +48,9 @@ def append_provider(
     provider: str,
     display_name: str,
     base_url: str,
+    default_models: str,
     protocol: str = "openai",
-    default_models: str = None,
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     MODEL_PROVIDERS[provider] = {
         "display_name": display_name,
         "base_url": base_url,
@@ -60,7 +60,7 @@ def append_provider(
     return MODEL_PROVIDERS
 
 
-def create_model_config(provider: str, api: str, model_name: str = None) -> ModelConfig:
+def create_model_config(provider: str, api: str, model_name: str) -> ModelConfig:
     if provider not in MODEL_PROVIDERS:
         raise ValueError(f"Unknown model provider: {provider}")
     provider_info = MODEL_PROVIDERS[provider]

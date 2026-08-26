@@ -1,3 +1,7 @@
+"""
+该文件是用来给用户创建Agent的, 在该文件内写好创建某个具体agent的函数, 供用户外部调用 api 接口
+"""
+
 from linkforge.agent.framework import RecAgent
 from linkforge.llm.base import LLM
 from linkforge.tools.weather import weather_tool

@@ -1,5 +1,4 @@
 import json
-from typing import List
 
 from openai import OpenAI
 
@@ -10,7 +9,7 @@ class OpenAIInterface(LLM):
     def __init__(self, api_key: str, base_url: str | None = None):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
-    def _convert_tool_calls(self, tool_calls: List[ToolCall]) -> List[dict]:
+    def _convert_tool_calls(self, tool_calls: list[ToolCall]) -> list[dict]:
         """
         Convert tool calls to OpenAI format
         """
@@ -32,7 +31,7 @@ class OpenAIInterface(LLM):
         self,
         role: str,
         content: str | None = None,
-        tool_calls: List[ToolCall] | None = None,
+        tool_calls: list[ToolCall] | None = None,
         tool_call_id: str | None = None,
     ) -> dict:
         if role in ("system", "user"):

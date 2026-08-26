@@ -1,5 +1,3 @@
-from typing import List
-
 from anthropic import Anthropic
 from anthropic.types import TextBlock, ToolUseBlock
 
@@ -10,7 +8,7 @@ class AnthropicInterface(LLM):
     def __init__(self, api_key: str):
         self.client = Anthropic(api_key=api_key)
 
-    def _convert_tool_calls(self, tool_calls: List[ToolCall]) -> List[dict]:
+    def _convert_tool_calls(self, tool_calls: list[ToolCall]) -> list[dict]:
         """Convert tool calls to Anthropic format"""
         anthropic_tool_calls = []
         for tool_call in tool_calls:
@@ -28,9 +26,9 @@ class AnthropicInterface(LLM):
         self,
         role: str,
         content: str | None = None,
-        tool_calls: List[ToolCall] | None = None,
+        tool_calls: list[ToolCall] | None = None,
         tool_call_id: str | None = None,
-    ) -> dict:
+    ) -> dict | None:
         if role == "system":
             # Anthropic's system prompt is not part of messages, return None here
             # It will be extracted in call_model
@@ -39,7 +37,8 @@ class AnthropicInterface(LLM):
             return {"role": role, "content": content}
         elif role == "assistant":
             if tool_calls:
-                # In Anthropic, assistant messages need to combine text and tool calls in content blocks
+                # In Anthropic, assistant messages need to combine text and
+                #  tool calls in content blocks
                 content_blocks = []
                 if content:
                     content_blocks.append({"type": "text", "text": content})
