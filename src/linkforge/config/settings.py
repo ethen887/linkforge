@@ -60,12 +60,19 @@ def append_provider(
     return MODEL_PROVIDERS
 
 
-def create_model_config(provider: str, api: str, model_name: str) -> ModelConfig:
+def create_model_config(
+    provider: str,
+    api: str,
+    model_name: str | None = None,
+) -> ModelConfig:
     if provider not in MODEL_PROVIDERS:
         raise ValueError(f"Unknown model provider: {provider}")
+
     provider_info = MODEL_PROVIDERS[provider]
+
     if model_name is None:
         model_name = provider_info["default_model"]
+
     return ModelConfig(
         api_key=api,
         base_url=provider_info["base_url"],
