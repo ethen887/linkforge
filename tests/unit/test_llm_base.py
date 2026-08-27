@@ -1,5 +1,7 @@
 """Unit tests for the LLM base interface."""
+
 import pytest
+
 from linkforge.llm.base import LLM, LLMResponse, ToolCall
 
 

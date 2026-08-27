@@ -1,12 +1,13 @@
 """Unit tests for the agent framework, using a Fake LLM."""
-import pytest
-from linkforge.agent.framework import RecAgent, AgentTool
+
+from linkforge.agent.framework import AgentTool, RecAgent
 from linkforge.llm.base import LLMResponse, ToolCall
 from tests.fakes import FakeLLM, RecordingFakeLLM
 
 
 def make_weather_tool():
     """A simple weather tool for testing, no API calls."""
+
     def get_weather(location: str) -> str:
         return f"Weather in {location}: sunny, 25C"
 
@@ -14,13 +15,11 @@ def make_weather_tool():
         name="get_weather",
         parameters={
             "type": "object",
-            "properties": {
-                "location": {"type": "string", "description": "City name"}
-            },
-            "required": ["location"]
+            "properties": {"location": {"type": "string", "description": "City name"}},
+            "required": ["location"],
         },
         description="Get the current weather for a city",
-        function=get_weather
+        function=get_weather,
     )
 
 
@@ -29,12 +28,7 @@ class TestAgentRequiresLLMAbstraction:
 
     def test_agent_accepts_any_llm_subclass(self):
         fake = FakeLLM([LLMResponse(content="hi")])
-        agent = RecAgent(
-            system_prompt="test",
-            client=fake,
-            tools=[],
-            model="fake-model"
-        )
+        agent = RecAgent(system_prompt="test", client=fake, tools=[], model="fake-model")
         result = agent.run("hello")
         assert result == "hi"
 
@@ -44,10 +38,7 @@ class TestAgentRequiresLLMAbstraction:
         recording.add_response(LLMResponse(content="Mock response"))
 
         agent = RecAgent(
-            system_prompt="You are a test agent.",
-            client=recording,
-            tools=[],
-            model="any-model"
+            system_prompt="You are a test agent.", client=recording, tools=[], model="any-model"
         )
 
         agent.run("test prompt")
@@ -62,23 +53,25 @@ class TestAgentToolCalling:
 
     def test_agent_calls_tool_and_returns_result(self):
         # First response: tool call. Second response: final answer.
-        fake = FakeLLM([
-            LLMResponse(
-                content=None,
-                tool_calls=[ToolCall(
-                    id="call_1",
-                    name="get_weather",
-                    arguments={"location": "Hangzhou"}
-                )]
-            ),
-            LLMResponse(content="Hangzhou is sunny, 25C.")
-        ])
+        fake = FakeLLM(
+            [
+                LLMResponse(
+                    content=None,
+                    tool_calls=[
+                        ToolCall(
+                            id="call_1", name="get_weather", arguments={"location": "Hangzhou"}
+                        )
+                    ],
+                ),
+                LLMResponse(content="Hangzhou is sunny, 25C."),
+            ]
+        )
 
         agent = RecAgent(
             system_prompt="Weather assistant",
             client=fake,
             tools=[make_weather_tool()],
-            model="fake-model"
+            model="fake-model",
         )
 
         result = agent.run("What's the weather in Hangzhou?")
@@ -87,23 +80,18 @@ class TestAgentToolCalling:
         assert fake.call_count == 2
 
     def test_agent_handles_unknown_tool_gracefully(self):
-        fake = FakeLLM([
-            LLMResponse(
-                content=None,
-                tool_calls=[ToolCall(
-                    id="call_1",
-                    name="nonexistent_tool",
-                    arguments={}
-                )]
-            ),
-            LLMResponse(content="Sorry, I cannot help with that.")
-        ])
+        fake = FakeLLM(
+            [
+                LLMResponse(
+                    content=None,
+                    tool_calls=[ToolCall(id="call_1", name="nonexistent_tool", arguments={})],
+                ),
+                LLMResponse(content="Sorry, I cannot help with that."),
+            ]
+        )
 
         agent = RecAgent(
-            system_prompt="test",
-            client=fake,
-            tools=[make_weather_tool()],
-            model="fake-model"
+            system_prompt="test", client=fake, tools=[make_weather_tool()], model="fake-model"
         )
 
         # Should not crash even with an unknown tool
@@ -112,23 +100,22 @@ class TestAgentToolCalling:
 
     def test_agent_respects_max_steps(self):
         """If the fake LLM keeps requesting tools, the agent should give up after max_steps."""
-        fake = FakeLLM([
-            LLMResponse(
-                content=None,
-                tool_calls=[ToolCall(
-                    id=f"call_{i}",
-                    name="get_weather",
-                    arguments={"location": f"City{i}"}
-                )]
-            )
-            for i in range(10)
-        ])
+        fake = FakeLLM(
+            [
+                LLMResponse(
+                    content=None,
+                    tool_calls=[
+                        ToolCall(
+                            id=f"call_{i}", name="get_weather", arguments={"location": f"City{i}"}
+                        )
+                    ],
+                )
+                for i in range(10)
+            ]
+        )
 
         agent = RecAgent(
-            system_prompt="test",
-            client=fake,
-            tools=[make_weather_tool()],
-            model="fake-model"
+            system_prompt="test", client=fake, tools=[make_weather_tool()], model="fake-model"
         )
 
         result = agent.run("loop test", max_steps=3)
@@ -141,10 +128,7 @@ class TestAgentToolCalling:
         fake = FakeLLM([LLMResponse(content="Just a plain text answer.")])
 
         agent = RecAgent(
-            system_prompt="test",
-            client=fake,
-            tools=[make_weather_tool()],
-            model="fake-model"
+            system_prompt="test", client=fake, tools=[make_weather_tool()], model="fake-model"
         )
 
         result = agent.run("simple question")
@@ -158,10 +142,7 @@ class TestAgentToolCalling:
         fake.add_response(LLMResponse(content="ok"))
 
         agent = RecAgent(
-            system_prompt="You are a helpful assistant.",
-            client=fake,
-            tools=[],
-            model="model-x"
+            system_prompt="You are a helpful assistant.", client=fake, tools=[], model="model-x"
         )
         agent.run("hello")
 

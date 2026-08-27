@@ -1,5 +1,5 @@
 """Unit tests for the tools framework structure."""
-import pytest
+
 from linkforge.agent.framework import AgentTool
 from linkforge.tools.weather import weather_tool
 
@@ -13,7 +13,7 @@ class TestAgentTool:
             name="my_tool",
             parameters={"type": "object", "properties": {}},
             description="A test tool",
-            function=my_func
+            function=my_func,
         )
         assert tool.name == "my_tool"
         assert tool.description == "A test tool"
@@ -28,10 +28,10 @@ class TestAgentTool:
             parameters={
                 "type": "object",
                 "properties": {"x": {"type": "integer"}},
-                "required": ["x"]
+                "required": ["x"],
             },
             description="Compute something",
-            function=my_func
+            function=my_func,
         )
         json_spec = tool.func_json()
         assert json_spec["type"] == "function"
