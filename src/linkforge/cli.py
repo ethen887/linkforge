@@ -18,9 +18,9 @@ def init_entrance():
             f"默认模型：{provider_info['default_model']}）"
         )
     provider = input("请输入模型厂商: ").strip()
-    model_name = input("请输入模型名称，直接回车使用默认模型: ").strip()
+    model_name = input("请输入模型名称，输入\"de\"表示使用默认模型: ").strip()
     api_key = input("请输入你在你所用的模型的开放平台获取的API_Key: ").strip()
-    if model_name == "":
+    if model_name == "de":
         model_name = MODEL_PROVIDERS[provider]["default_model"]
 
     model_config = create_model_config(provider=provider, api=api_key, model_name=model_name)
