@@ -58,9 +58,7 @@ class TestAgentToolCalling:
                 LLMResponse(
                     content=None,
                     tool_calls=[
-                        ToolCall(
-                            id="call_1", name="get_weather", arguments={"location": "Hangzhou"}
-                        )
+                        ToolCall(id="call_1", name="get_weather", arguments={"location": "Hangzhou"})
                     ],
                 ),
                 LLMResponse(content="Hangzhou is sunny, 25C."),
@@ -90,9 +88,7 @@ class TestAgentToolCalling:
             ]
         )
 
-        agent = RecAgent(
-            system_prompt="test", client=fake, tools=[make_weather_tool()], model="fake-model"
-        )
+        agent = RecAgent(system_prompt="test", client=fake, tools=[make_weather_tool()], model="fake-model")
 
         # Should not crash even with an unknown tool
         result = agent.run("do something")
@@ -105,18 +101,14 @@ class TestAgentToolCalling:
                 LLMResponse(
                     content=None,
                     tool_calls=[
-                        ToolCall(
-                            id=f"call_{i}", name="get_weather", arguments={"location": f"City{i}"}
-                        )
+                        ToolCall(id=f"call_{i}", name="get_weather", arguments={"location": f"City{i}"})
                     ],
                 )
                 for i in range(10)
             ]
         )
 
-        agent = RecAgent(
-            system_prompt="test", client=fake, tools=[make_weather_tool()], model="fake-model"
-        )
+        agent = RecAgent(system_prompt="test", client=fake, tools=[make_weather_tool()], model="fake-model")
 
         result = agent.run("loop test", max_steps=3)
 
@@ -127,9 +119,7 @@ class TestAgentToolCalling:
         """If the LLM responds with text and no tool calls, the agent should stop."""
         fake = FakeLLM([LLMResponse(content="Just a plain text answer.")])
 
-        agent = RecAgent(
-            system_prompt="test", client=fake, tools=[make_weather_tool()], model="fake-model"
-        )
+        agent = RecAgent(system_prompt="test", client=fake, tools=[make_weather_tool()], model="fake-model")
 
         result = agent.run("simple question")
 

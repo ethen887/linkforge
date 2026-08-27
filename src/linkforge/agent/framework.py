@@ -1,4 +1,5 @@
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from linkforge.llm.base import LLM
 
@@ -112,10 +113,7 @@ class RecAgent:
                     )
                 )
 
-                print(
-                    "No function was called for this task, "
-                    f"model only outputs text content: {text}"
-                )
+                print(f"No function was called for this task, model only outputs text content: {text}")
                 return text
 
         return f"Task execution exceeded {max_steps} steps, task failed"

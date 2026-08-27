@@ -1,14 +1,12 @@
 """Fake LLM implementations for testing without making real API calls."""
 
-from typing import List, Optional
-
 from linkforge.llm.base import LLM, LLMResponse, ToolCall
 
 
 class FakeLLM(LLM):
     """A deterministic fake LLM that returns predefined responses for testing."""
 
-    def __init__(self, scripted_responses: Optional[List[LLMResponse]] = None):
+    def __init__(self, scripted_responses: list[LLMResponse] | None = None):
         self.scripted_responses = scripted_responses or []
         self.call_count = 0
         self.received_messages = []
@@ -19,7 +17,7 @@ class FakeLLM(LLM):
         """Add a response to the scripted sequence."""
         self.scripted_responses.append(response)
 
-    def _convert_tool_calls(self, tool_calls: List[ToolCall]) -> List[dict]:
+    def _convert_tool_calls(self, tool_calls: list[ToolCall]) -> list[dict]:
         """Convert tool calls to a generic format."""
         return [
             {
@@ -34,7 +32,7 @@ class FakeLLM(LLM):
         self,
         role: str,
         content: str | None = None,
-        tool_calls: List[ToolCall] | None = None,
+        tool_calls: list[ToolCall] | None = None,
         tool_call_id: str | None = None,
     ) -> dict:
         """Convert messages in a simple format compatible with the fake."""

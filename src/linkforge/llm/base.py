@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List
 
 
 @dataclass
@@ -10,22 +9,22 @@ class ToolCall:
 
 
 class LLMResponse:
-    def __init__(self, content: str | None = None, tool_calls: List[ToolCall] | None = None):
+    def __init__(self, content: str | None = None, tool_calls: list[ToolCall] | None = None):
         self.content = content
         self.tool_calls = tool_calls or []
 
 
 class LLM:
-    def _convert_tool_calls(self, tool_calls: List[ToolCall]) -> List[dict]:
+    def _convert_tool_calls(self, tool_calls: list[ToolCall]) -> list[dict]:
         raise NotImplementedError("Subclass must implement _convert_tool_calls method")
 
     def _convert_messages(
         self,
         role: str,
         content: str | None = None,
-        tool_calls: List[ToolCall] | None = None,
+        tool_calls: list[ToolCall] | None = None,
         tool_call_id: str | None = None,
-    ) -> dict:
+    ) -> dict | None:
         raise NotImplementedError("Subclass must implement _convert_messages method")
 
     def call_model(self, model: str, messages: list, tools: list) -> LLMResponse:
