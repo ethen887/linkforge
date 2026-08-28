@@ -1,0 +1,200 @@
+name: Feature Request
+description: 提出 LinkForge 的新功能、能力扩展或新的工程需求
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你为 LinkForge 提出新功能。
+
+        请尽量明确说明：
+        - 为什么需要这个功能；
+        - 这个功能解决什么问题；
+        - 期望达到什么结果；
+        - 如何判断该功能已经完成。
+
+        对实现方式不确定没有关系，Issue 首先描述需求和目标，具体技术方案可以在后续设计与开发过程中确定。
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 功能概述
+      description: 用简洁的语言说明希望新增什么功能。
+      placeholder: |
+        例如：
+        为 LinkForge 增加基础 Browser 模块，使上层代码能够统一启动、访问和关闭浏览器。
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: 背景与问题
+      description: 当前存在什么问题？为什么需要这个功能？
+      placeholder: |
+        例如：
+        LinkForge 当前已经具备基础 Agent 和 LLM 能力，但还没有访问和操作真实网页的统一接口。
+        如果 Agent 直接依赖 Playwright，会导致 Agent 与具体浏览器实现强耦合，也不利于后续测试和替换实现。
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标
+      description: 这个功能完成以后，系统应该具备什么能力？
+      placeholder: |
+        例如：
+        - 能够启动 Chromium；
+        - 能够打开指定 URL；
+        - 能够正确管理 Browser、BrowserContext 和 Page；
+        - 能够正常关闭并释放浏览器资源；
+        - 上层模块不直接依赖 Playwright。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: 涉及模块
+      description: 该功能主要属于 LinkForge 的哪个模块？
+      options:
+        - agent
+        - browser
+        - llm
+        - config
+        - tools
+        - application
+        - presentation / cli
+        - tests
+        - docs
+        - ci / github
+        - multiple modules
+        - other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: 项目阶段
+      description: 该功能当前主要属于哪个研发阶段？
+      options:
+        - Phase 1 - LLM Infrastructure
+        - Phase 2 - Browser Infrastructure
+        - Phase 3 - Observation Infrastructure
+        - Phase 4 - Action & Agent Loop
+        - Phase 5 - Application Runtime
+        - Phase 6 - CLI Productization
+        - Phase 7 - Workflow MVP
+        - Phase 8 - Reliability Engineering
+        - Phase 9 - Release
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: 初步实现方案
+      description: 如果已经有技术方案，可以在这里描述；如果暂时没有，可以填写“待设计”。
+      placeholder: |
+        例如：
+        新建 src/linkforge/browser 包。
+
+        定义 Browser 抽象接口，并使用 PlaywrightBrowser 作为第一种具体实现：
+
+        Agent / Tools
+            ↓
+        Browser Interface
+            ↓
+        PlaywrightBrowser
+            ↓
+        Playwright
+            ↓
+        Chromium
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 本 Issue 范围
+      description: 明确这次开发包含什么，以及明确不包含什么，避免 Issue 范围不断扩大。
+      placeholder: |
+        包含：
+        - Browser 抽象接口；
+        - Playwright Browser 实现；
+        - 浏览器启动；
+        - 页面创建；
+        - URL 导航；
+        - 浏览器关闭。
+
+        不包含：
+        - Observation；
+        - Agent Loop；
+        - 学习通业务逻辑；
+        - 多标签页管理。
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: 验收标准
+      description: 使用可以被验证的条件说明什么时候该 Issue 可以关闭。
+      placeholder: |
+        - [ ] Browser 可以正常启动
+        - [ ] 可以访问指定测试页面
+        - [ ] 可以获取当前 URL
+        - [ ] 可以正常关闭 Browser、Context 和 Page
+        - [ ] Playwright 异常不会无处理地泄漏到上层
+        - [ ] 对应测试通过
+        - [ ] Ruff 检查通过
+        - [ ] CI 通过
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 备选方案与 Trade-off
+      description: 如果考虑过其他实现方案，可以记录为什么暂时不采用。
+      placeholder: |
+        例如：
+        方案 A：Agent 直接调用 Playwright
+        优点：实现简单
+        缺点：耦合严重，不利于测试
+
+        方案 B：增加 Browser 抽象层
+        优点：隔离 Playwright，便于测试和替换实现
+        缺点：增加一层接口
+
+        当前选择方案 B。
+    validations:
+      required: false
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: 风险与注意事项
+      description: 是否存在兼容性、性能、资源生命周期、安全或架构风险？
+      placeholder: |
+        例如：
+        - Browser 属于外部资源，异常情况下也必须保证释放；
+        - 第一阶段仅支持单 BrowserContext 和单 Page；
+        - 暂时采用同步 Playwright API，不提前引入 asyncio。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已经确认该需求不是已有 Issue 的重复内容
+          required: true
+        - label: 我已经尽量明确了需求目标，而不仅仅描述具体代码实现
+          required: true
+        - label: 我已经给出了可以验证的验收标准
+          required: true
