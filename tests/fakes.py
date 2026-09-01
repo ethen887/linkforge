@@ -1,6 +1,62 @@
-"""Fake LLM implementations for testing without making real API calls."""
+"""Test doubles for external LinkForge interfaces."""
 
+from linkforge.browser.base import Browser
+from linkforge.browser.exceptions import BrowserError
 from linkforge.llm.base import LLM, LLMResponse, ToolCall
+
+
+class FakeBrowser(Browser):
+    """A deterministic Browser implementation that does not launch a real browser."""
+
+    def __init__(
+        self,
+        *,
+        url: str = "about:blank",
+        title: str = "",
+        text: str = "",
+        observation_error: BrowserError | None = None,
+    ) -> None:
+        self.url = url
+        self.page_title = title
+        self.page_text = text
+        self.observation_error = observation_error
+
+    def start(self) -> None:
+        pass
+
+    def open(self, url: str) -> None:
+        self.url = url
+
+    def current_url(self) -> str:
+        self._raise_observation_error()
+        return self.url
+
+    def title(self) -> str:
+        self._raise_observation_error()
+        return self.page_title
+
+    def text(self) -> str:
+        self._raise_observation_error()
+        return self.page_text
+
+    def click(self, selector: str) -> None:
+        pass
+
+    def fill(self, selector: str, text: str) -> None:
+        pass
+
+    def press(self, selector: str, key: str) -> None:
+        pass
+
+    def scroll(self, delta_y: int) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def _raise_observation_error(self) -> None:
+        if self.observation_error is not None:
+            raise self.observation_error
 
 
 class FakeLLM(LLM):
