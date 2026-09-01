@@ -10,71 +10,52 @@ on:
     branches:
       - main
 
-# GitHub权限
+# GitHub 权限
 permissions:
   contents: read
 
-
 jobs:
-
   quality-check:
-
     name: Code Quality Check
-
     runs-on: ubuntu-latest
 
-
     steps:
-
       # 下载代码
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      # 安装Python
+      # 安装 Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-
-      # 安装uv
+      # 安装 uv
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
-
       # 安装项目依赖
       - name: Install dependencies
-        run:
-
-          uv sync --locked
-
+        run: uv sync --locked
 
       # 检查代码格式
       - name: Check formatting
-        run:
-
-          uv run ruff format --check .
-
+        run: uv run ruff format --check .
 
       # 检查代码规范
       - name: Lint
-        run:
-
-          uv run ruff check .
-
+        run: uv run ruff check .
 
       # 类型检查
       - name: Type check
-        run:
+        run: uv run mypy src
 
-          uv run mypy src
-
+      # 安装 Browser 集成测试所需的 Chromium 和系统依赖
+      - name: Install Playwright Chromium
+        run: uv run playwright install --with-deps chromium
 
       # 自动化测试
       - name: Run tests
-        run:
-
-          uv run pytest
+        run: uv run pytest
