@@ -1,7 +1,8 @@
 """Test doubles for external LinkForge interfaces."""
 
 from linkforge.browser.base import Browser
-from linkforge.browser.exceptions import BrowserError
+from linkforge.browser.exceptions import BrowserElementError, BrowserError
+from linkforge.browser.models import InteractiveElement
 from linkforge.llm.base import LLM, LLMResponse, ToolCall
 
 
@@ -14,15 +15,18 @@ class FakeBrowser(Browser):
         url: str = "about:blank",
         title: str = "",
         text: str = "",
+        interactive_elements: tuple[InteractiveElement, ...] = (),
         observation_error: BrowserError | None = None,
         action_error: BrowserError | None = None,
     ) -> None:
         self.url = url
         self.page_title = title
         self.page_text = text
+        self.page_interactive_elements = interactive_elements
         self.observation_error = observation_error
         self.action_error = action_error
         self.action_calls: list[tuple[object, ...]] = []
+        self._active_target_ids: set[int] = set()
 
     def start(self) -> None:
         pass
@@ -30,6 +34,7 @@ class FakeBrowser(Browser):
     def open(self, url: str) -> None:
         self._raise_action_error()
         self.url = url
+        self._active_target_ids.clear()
         self.action_calls.append(("open", url))
 
     def current_url(self) -> str:
@@ -43,6 +48,26 @@ class FakeBrowser(Browser):
     def text(self) -> str:
         self._raise_observation_error()
         return self.page_text
+
+    def interactive_elements(self) -> tuple[InteractiveElement, ...]:
+        self._raise_observation_error()
+        self._active_target_ids = {element.target_id for element in self.page_interactive_elements}
+        return self.page_interactive_elements
+
+    def click_target(self, target_id: int) -> None:
+        self._require_target(target_id)
+        self._raise_action_error()
+        self.action_calls.append(("click_target", target_id))
+
+    def fill_target(self, target_id: int, text: str) -> None:
+        self._require_target(target_id)
+        self._raise_action_error()
+        self.action_calls.append(("fill_target", target_id, text))
+
+    def press_target(self, target_id: int, key: str) -> None:
+        self._require_target(target_id)
+        self._raise_action_error()
+        self.action_calls.append(("press_target", target_id, key))
 
     def click(self, selector: str) -> None:
         self._raise_action_error()
@@ -61,7 +86,7 @@ class FakeBrowser(Browser):
         self.action_calls.append(("scroll", delta_y))
 
     def close(self) -> None:
-        pass
+        self._active_target_ids.clear()
 
     def _raise_observation_error(self) -> None:
         if self.observation_error is not None:
@@ -70,6 +95,10 @@ class FakeBrowser(Browser):
     def _raise_action_error(self) -> None:
         if self.action_error is not None:
             raise self.action_error
+
+    def _require_target(self, target_id: int) -> None:
+        if target_id not in self._active_target_ids:
+            raise BrowserElementError(f"Unknown or stale target_id: {target_id}")
 
 
 class FakeLLM(LLM):

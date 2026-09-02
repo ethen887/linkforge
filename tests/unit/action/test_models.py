@@ -20,23 +20,23 @@ def test_open_action_stores_url() -> None:
     assert action.url == "https://example.com"
 
 
-def test_click_action_stores_selector() -> None:
-    action = ClickAction(selector="#submit")
+def test_click_action_stores_target_id() -> None:
+    action = ClickAction(target_id=3)
 
-    assert action.selector == "#submit"
+    assert action.target_id == 3
 
 
-def test_fill_action_stores_selector_and_text() -> None:
-    action = FillAction(selector="#name", text="LinkForge")
+def test_fill_action_stores_target_id_and_text() -> None:
+    action = FillAction(target_id=1, text="LinkForge")
 
-    assert action.selector == "#name"
+    assert action.target_id == 1
     assert action.text == "LinkForge"
 
 
-def test_press_action_stores_selector_and_key() -> None:
-    action = PressAction(selector="#name", key="Enter")
+def test_press_action_stores_target_id_and_key() -> None:
+    action = PressAction(target_id=1, key="Enter")
 
-    assert action.selector == "#name"
+    assert action.target_id == 1
     assert action.key == "Enter"
 
 
@@ -50,9 +50,9 @@ def test_scroll_action_stores_delta() -> None:
     ("action", "field", "value"),
     [
         (OpenAction(url="https://example.com"), "url", "https://changed.example.com"),
-        (ClickAction(selector="#submit"), "selector", "#changed"),
-        (FillAction(selector="#name", text="LinkForge"), "text", "Changed"),
-        (PressAction(selector="#name", key="Enter"), "key", "Escape"),
+        (ClickAction(target_id=3), "target_id", 4),
+        (FillAction(target_id=1, text="LinkForge"), "text", "Changed"),
+        (PressAction(target_id=1, key="Enter"), "key", "Escape"),
         (ScrollAction(delta_y=500), "delta_y", 100),
     ],
 )

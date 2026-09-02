@@ -24,9 +24,13 @@ from urllib.parse import quote
 
 import pytest
 
-from linkforge.browser.exceptions import BrowserClosedError
+from linkforge.action.browser import BrowserActionExecutor
+from linkforge.action.exceptions import ActionExecutionError
+from linkforge.action.models import ClickAction, FillAction, PressAction
+from linkforge.browser.exceptions import BrowserClosedError, BrowserElementError
 from linkforge.browser.playwright import PlaywrightBrowser
 from linkforge.config.settings import BrowserConfig
+from linkforge.observation.browser import BrowserObserver
 
 
 def _make_data_url(html: str) -> str:
@@ -317,3 +321,94 @@ def test_browser_context_manager_closes_resources(
 
     with pytest.raises(BrowserClosedError):
         browser.title()
+
+
+def test_interactive_elements_support_target_based_actions(
+    browser: PlaywrightBrowser,
+) -> None:
+    """Verify the complete observation-to-target-action path on a local page."""
+    html = """
+    <!DOCTYPE html>
+    <html>
+        <head>
+            <title>Interactive Elements Test</title>
+        </head>
+        <body>
+            <label for="query">Search query</label>
+            <input
+                id="query"
+                type="search"
+                oninput="document.getElementById('result').innerText = 'Filled: ' + this.value;"
+                onkeydown="
+                    if (event.key === 'Enter') {
+                        document.getElementById('result').innerText = 'Enter pressed';
+                    }
+                "
+            >
+            <button
+                id="search"
+                onclick="document.getElementById('result').innerText = 'Button clicked';"
+            >
+                Search
+            </button>
+            <a
+                href="#details"
+                onclick="document.getElementById('result').innerText = 'Link clicked';"
+            >
+                Open details
+            </a>
+            <p id="result"></p>
+        </body>
+    </html>
+    """
+    browser.open(_make_data_url(html))
+    observation = BrowserObserver(browser).observe()
+    executor = BrowserActionExecutor(browser)
+
+    elements = {(element.role, element.name): element for element in observation.interactive_elements}
+    textbox = elements[("textbox", "Search query")]
+    button = elements[("button", "Search")]
+    link = elements[("link", "Open details")]
+
+    assert len({textbox.target_id, button.target_id, link.target_id}) == 3
+
+    executor.execute(FillAction(target_id=textbox.target_id, text="LinkForge"))
+    assert "Filled: LinkForge" in browser.text()
+
+    executor.execute(PressAction(target_id=textbox.target_id, key="Enter"))
+    assert "Enter pressed" in browser.text()
+
+    executor.execute(ClickAction(target_id=button.target_id))
+    assert "Button clicked" in browser.text()
+
+    executor.execute(ClickAction(target_id=link.target_id))
+    assert "Link clicked" in browser.text()
+
+
+def test_new_observation_invalidates_previous_target_ids(
+    browser: PlaywrightBrowser,
+) -> None:
+    """Verify target IDs cannot resolve to elements from a newer observation."""
+    html = """
+    <!DOCTYPE html>
+    <html>
+        <body>
+            <button>Submit</button>
+        </body>
+    </html>
+    """
+    browser.open(_make_data_url(html))
+    observer = BrowserObserver(browser)
+    executor = BrowserActionExecutor(browser)
+
+    first_observation = observer.observe()
+    second_observation = observer.observe()
+    stale_target_id = first_observation.interactive_elements[0].target_id
+    current_target_id = second_observation.interactive_elements[0].target_id
+
+    assert stale_target_id != current_target_id
+
+    with pytest.raises(ActionExecutionError) as exc_info:
+        executor.execute(ClickAction(target_id=stale_target_id))
+
+    assert isinstance(exc_info.value.__cause__, BrowserElementError)

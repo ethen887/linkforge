@@ -37,6 +37,7 @@ from playwright.sync_api import (
 )
 from playwright.sync_api import (
     BrowserContext,
+    ElementHandle,
     Page,
     Playwright,
     sync_playwright,
@@ -57,6 +58,17 @@ from .exceptions import (
     BrowserStartError,
     BrowserTimeoutError,
 )
+from .models import InteractiveElement, InteractiveElementRole
+
+_INTERACTIVE_ELEMENT_SELECTOR = (
+    'a[href], button, input:not([type="hidden"]), textarea, '
+    '[role="link"], [role="button"], [role="textbox"]'
+)
+_INTERACTIVE_ELEMENT_ROLES: dict[str, InteractiveElementRole] = {
+    "link": "link",
+    "button": "button",
+    "textbox": "textbox",
+}
 
 
 class PlaywrightBrowser(Browser):
@@ -108,6 +120,8 @@ class PlaywrightBrowser(Browser):
         self._browser: PlaywrightNativeBrowser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
+        self._targets: dict[int, ElementHandle] = {}
+        self._next_target_id = 1
 
     def start(self) -> None:
         """
@@ -177,6 +191,7 @@ class PlaywrightBrowser(Browser):
             raise ValueError("url must not be empty")
 
         page = self._require_page()
+        self._targets.clear()
 
         try:
             page.goto(
@@ -257,6 +272,86 @@ class PlaywrightBrowser(Browser):
 
         except PlaywrightError as exc:
             raise BrowserError("Failed to read page text.") from exc
+
+    def interactive_elements(self) -> tuple[InteractiveElement, ...]:
+        """Discover visible, enabled interactive elements and refresh the target mapping."""
+        page = self._require_page()
+        self._targets.clear()
+
+        try:
+            handles = page.locator(_INTERACTIVE_ELEMENT_SELECTOR).element_handles()
+            targets: dict[int, ElementHandle] = {}
+            elements: list[InteractiveElement] = []
+            next_target_id = self._next_target_id
+
+            for handle in handles:
+                if not handle.is_visible() or not handle.is_enabled():
+                    continue
+
+                description = self._describe_interactive_element(handle)
+                if description is None:
+                    continue
+
+                role, name = description
+                target_id = next_target_id
+                next_target_id += 1
+
+                targets[target_id] = handle
+                elements.append(
+                    InteractiveElement(
+                        target_id=target_id,
+                        role=role,
+                        name=name,
+                    )
+                )
+
+            self._targets = targets
+            self._next_target_id = next_target_id
+            return tuple(elements)
+
+        except PlaywrightTimeoutError as exc:
+            self._targets.clear()
+            raise BrowserTimeoutError("Timed out while reading interactive elements.") from exc
+
+        except PlaywrightError as exc:
+            self._targets.clear()
+            raise BrowserError("Failed to read interactive elements.") from exc
+
+    def click_target(self, target_id: int) -> None:
+        """Click a logical target from the current interactive-element mapping."""
+        target = self._require_target(target_id)
+
+        try:
+            target.click(timeout=self._timeout_ms)
+        except PlaywrightTimeoutError as exc:
+            raise BrowserTimeoutError(f"Timed out while clicking target: {target_id}") from exc
+        except PlaywrightError as exc:
+            raise BrowserElementError(f"Failed to click target: {target_id}") from exc
+
+    def fill_target(self, target_id: int, text: str) -> None:
+        """Fill a logical target from the current interactive-element mapping."""
+        target = self._require_target(target_id)
+
+        try:
+            target.fill(text, timeout=self._timeout_ms)
+        except PlaywrightTimeoutError as exc:
+            raise BrowserTimeoutError(f"Timed out while filling target: {target_id}") from exc
+        except PlaywrightError as exc:
+            raise BrowserElementError(f"Failed to fill target: {target_id}") from exc
+
+    def press_target(self, target_id: int, key: str) -> None:
+        """Send a key press to a logical target from the current mapping."""
+        if not key.strip():
+            raise ValueError("key must not be empty")
+
+        target = self._require_target(target_id)
+
+        try:
+            target.press(key, timeout=self._timeout_ms)
+        except PlaywrightTimeoutError as exc:
+            raise BrowserTimeoutError(f"Timed out while pressing key on target: {target_id}") from exc
+        except PlaywrightError as exc:
+            raise BrowserElementError(f"Failed to press key '{key}' on target: {target_id}") from exc
 
     def click(self, selector: str) -> None:
         """
@@ -462,6 +557,88 @@ class PlaywrightBrowser(Browser):
 
         return self._page
 
+    def _require_target(self, target_id: int) -> ElementHandle:
+        """Return a mapped target or reject an unknown or stale logical ID."""
+        target = self._targets.get(target_id)
+        if target is None:
+            raise BrowserElementError(f"Unknown or stale target_id: {target_id}")
+        return target
+
+    @staticmethod
+    def _describe_interactive_element(
+        element: ElementHandle,
+    ) -> tuple[InteractiveElementRole, str] | None:
+        """Extract a small browser-neutral role and accessible label from an element."""
+        description = element.evaluate(
+            r"""
+            element => {
+                const explicitRole = (element.getAttribute("role") || "").toLowerCase();
+                const tagName = element.tagName.toLowerCase();
+                const inputType = (element.getAttribute("type") || "text").toLowerCase();
+                let role = null;
+
+                if (["link", "button", "textbox"].includes(explicitRole)) {
+                    role = explicitRole;
+                } else if (tagName === "a" && element.hasAttribute("href")) {
+                    role = "link";
+                } else if (
+                    tagName === "button" ||
+                    (tagName === "input" && ["button", "submit", "reset"].includes(inputType))
+                ) {
+                    role = "button";
+                } else if (
+                    tagName === "textarea" ||
+                    (tagName === "input" &&
+                        ["text", "search", "email", "password", "tel", "url", "number"].includes(
+                            inputType
+                        ))
+                ) {
+                    role = "textbox";
+                }
+
+                let name = element.getAttribute("aria-label") || "";
+                const labelledBy = element.getAttribute("aria-labelledby");
+                if (!name && labelledBy) {
+                    name = labelledBy
+                        .split(/\s+/)
+                        .map(id => element.ownerDocument.getElementById(id)?.textContent || "")
+                        .join(" ");
+                }
+                if (!name && element.labels) {
+                    name = Array.from(element.labels)
+                        .map(label => label.textContent || "")
+                        .join(" ");
+                }
+                if (!name) {
+                    name = element.innerText || element.textContent || "";
+                }
+                if (!name) {
+                    name =
+                        element.getAttribute("placeholder") ||
+                        element.getAttribute("title") ||
+                        "";
+                }
+                if (!name && role === "button") {
+                    name = element.getAttribute("value") || "";
+                }
+
+                return {role, name: name.trim().replace(/\s+/g, " ")};
+            }
+            """
+        )
+
+        if not isinstance(description, dict):
+            return None
+
+        raw_role = description.get("role")
+        raw_name = description.get("name")
+        if not isinstance(raw_role, str) or raw_role not in _INTERACTIVE_ELEMENT_ROLES:
+            return None
+        if not isinstance(raw_name, str):
+            raw_name = ""
+
+        return _INTERACTIVE_ELEMENT_ROLES[raw_role], raw_name
+
     def _close_resources(self) -> list[Exception]:
         """
         尽最大努力释放 Browser 持有的全部底层资源。
@@ -474,6 +651,7 @@ class PlaywrightBrowser(Browser):
             没有异常时返回空列表。
         """
         errors: list[Exception] = []
+        self._targets.clear()
 
         page = self._page
         self._page = None
