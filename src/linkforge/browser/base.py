@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 from types import TracebackType
 from typing import Literal, Self
 
+from linkforge.browser.models import InteractiveElement
+
 
 class Browser(ABC):
     """
@@ -130,6 +132,64 @@ class Browser(ABC):
 
         Raises:
             BrowserError: 页面文本读取失败时抛出。
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def interactive_elements(self) -> tuple[InteractiveElement, ...]:
+        """
+        Discover interactive elements in the current page snapshot.
+
+        Calling this method refreshes the logical target mapping and invalidates
+        IDs from an earlier discovery. Navigation or DOM replacement can also
+        make IDs from the current mapping stale.
+
+        Returns:
+            Browser-neutral elements with logical target IDs.
+
+        Raises:
+            BrowserError: Browser state cannot be inspected.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def click_target(self, target_id: int) -> None:
+        """
+        Click an element discovered in the current page snapshot.
+
+        Args:
+            target_id: Logical target ID returned by interactive_elements().
+
+        Raises:
+            BrowserError: The target is unknown, stale, or cannot be clicked.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def fill_target(self, target_id: int, text: str) -> None:
+        """
+        Fill an element discovered in the current page snapshot.
+
+        Args:
+            target_id: Logical target ID returned by interactive_elements().
+            text: Text to enter.
+
+        Raises:
+            BrowserError: The target is unknown, stale, or cannot be filled.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def press_target(self, target_id: int, key: str) -> None:
+        """
+        Send a key press to an element in the current page snapshot.
+
+        Args:
+            target_id: Logical target ID returned by interactive_elements().
+            key: Key name, such as "Enter" or "Escape".
+
+        Raises:
+            BrowserError: The target is unknown, stale, or cannot receive the key press.
         """
         raise NotImplementedError
 

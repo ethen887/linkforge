@@ -20,6 +20,7 @@ class BrowserObserver(Observer):
                 url=self._browser.current_url(),
                 title=self._browser.title(),
                 text=self._browser.text(),
+                interactive_elements=self._browser.interactive_elements(),
             )
         except BrowserError as exc:
             raise ObservationCaptureError("Failed to capture browser observation.") from exc

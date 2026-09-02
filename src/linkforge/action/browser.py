@@ -28,11 +28,11 @@ class BrowserActionExecutor(ActionExecutor):
             if isinstance(action, OpenAction):
                 self._browser.open(action.url)
             elif isinstance(action, ClickAction):
-                self._browser.click(action.selector)
+                self._browser.click_target(action.target_id)
             elif isinstance(action, FillAction):
-                self._browser.fill(action.selector, action.text)
+                self._browser.fill_target(action.target_id, action.text)
             elif isinstance(action, PressAction):
-                self._browser.press(action.selector, action.key)
+                self._browser.press_target(action.target_id, action.key)
             elif isinstance(action, ScrollAction):
                 self._browser.scroll(action.delta_y)
             else:

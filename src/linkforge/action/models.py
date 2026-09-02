@@ -13,24 +13,24 @@ class OpenAction:
 
 @dataclass(frozen=True, slots=True)
 class ClickAction:
-    """Click the element matched by a selector."""
+    """Click an interactive element from the current observation."""
 
-    selector: str
+    target_id: int
 
 
 @dataclass(frozen=True, slots=True)
 class FillAction:
-    """Fill the element matched by a selector with text."""
+    """Fill an interactive element from the current observation with text."""
 
-    selector: str
+    target_id: int
     text: str
 
 
 @dataclass(frozen=True, slots=True)
 class PressAction:
-    """Send a key press to the element matched by a selector."""
+    """Send a key press to an interactive element from the current observation."""
 
-    selector: str
+    target_id: int
     key: str
 
 
