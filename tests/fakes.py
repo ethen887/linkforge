@@ -1,9 +1,75 @@
 """Test doubles for external LinkForge interfaces."""
 
+from linkforge.action.base import ActionExecutor
+from linkforge.action.models import Action
+from linkforge.agent.browser import BrowserAgent
+from linkforge.agent.models import BrowserDecision
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserElementError, BrowserError
 from linkforge.browser.models import InteractiveElement
 from linkforge.llm.base import LLM, LLMResponse, ToolCall
+from linkforge.observation.base import Observer
+from linkforge.observation.models import Observation
+
+
+class FakeObserver(Observer):
+    """Return scripted observations while recording loop events."""
+
+    def __init__(
+        self,
+        observations: list[Observation],
+        *,
+        events: list[str] | None = None,
+    ) -> None:
+        self.observations = observations
+        self.events = events if events is not None else []
+        self.call_count = 0
+
+    def observe(self) -> Observation:
+        self.events.append("observe")
+        if self.call_count >= len(self.observations):
+            raise AssertionError("No scripted observation remains.")
+
+        observation = self.observations[self.call_count]
+        self.call_count += 1
+        return observation
+
+
+class FakeBrowserAgent(BrowserAgent):
+    """Return scripted browser decisions while recording received observations."""
+
+    def __init__(
+        self,
+        decisions: list[BrowserDecision],
+        *,
+        events: list[str] | None = None,
+    ) -> None:
+        self.decisions = decisions
+        self.events = events if events is not None else []
+        self.observations: list[Observation] = []
+        self.call_count = 0
+
+    def decide(self, observation: Observation) -> BrowserDecision:
+        self.events.append("decide")
+        self.observations.append(observation)
+        if self.call_count >= len(self.decisions):
+            raise AssertionError("No scripted browser decision remains.")
+
+        decision = self.decisions[self.call_count]
+        self.call_count += 1
+        return decision
+
+
+class FakeActionExecutor(ActionExecutor):
+    """Record actions without interacting with a real execution target."""
+
+    def __init__(self, *, events: list[str] | None = None) -> None:
+        self.events = events if events is not None else []
+        self.actions: list[Action] = []
+
+    def execute(self, action: Action) -> None:
+        self.events.append("execute")
+        self.actions.append(action)
 
 
 class FakeBrowser(Browser):
