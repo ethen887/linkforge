@@ -3,18 +3,14 @@ from typing import Any, cast
 from anthropic import Anthropic
 from anthropic.types import MessageParam, TextBlock, ToolParam, ToolUseBlock
 
-from linkforge.llm.base import LLM, LLMResponse, ToolCall
+from linkforge.llm.base import LLM, LLMMessage, LLMResponse, ToolCall
 
 
 class AnthropicInterface(LLM):
     def __init__(self, api_key: str):
         self.client = Anthropic(api_key=api_key)
 
-        # Anthropic system prompt is sent as a top-level request parameter,
-        # not as an item inside the messages list.
-        self._system_prompt: str | None = None
-
-    def _convert_tool_calls(self, tool_calls: list[ToolCall]) -> list[dict]:
+    def _convert_tool_calls(self, tool_calls: tuple[ToolCall, ...]) -> list[dict[str, Any]]:
         """Convert LinkForge tool calls to Anthropic tool-use blocks."""
         anthropic_tool_calls = []
 
@@ -65,39 +61,32 @@ class AnthropicInterface(LLM):
 
         return anthropic_tools
 
-    def _convert_messages(
-        self,
-        role: str,
-        content: str | None = None,
-        tool_calls: list[ToolCall] | None = None,
-        tool_call_id: str | None = None,
-    ) -> dict | None:
+    def _convert_message(self, message: LLMMessage) -> dict[str, Any] | None:
         """Convert a LinkForge message to Anthropic message format."""
+        role = message.role
+
         if role == "system":
-            # Anthropic does not support "system" as a message role.
-            # Save it and later pass it through messages.create(system=...).
-            self._system_prompt = content
             return None
 
         if role == "user":
             return {
                 "role": "user",
-                "content": content or "",
+                "content": message.content or "",
             }
 
         if role == "assistant":
-            if tool_calls:
-                content_blocks: list[dict] = []
+            if message.tool_calls:
+                content_blocks: list[dict[str, Any]] = []
 
-                if content:
+                if message.content:
                     content_blocks.append(
                         {
                             "type": "text",
-                            "text": content,
+                            "text": message.content,
                         }
                     )
 
-                content_blocks.extend(self._convert_tool_calls(tool_calls))
+                content_blocks.extend(self._convert_tool_calls(message.tool_calls))
 
                 return {
                     "role": "assistant",
@@ -106,11 +95,11 @@ class AnthropicInterface(LLM):
 
             return {
                 "role": "assistant",
-                "content": content or "",
+                "content": message.content or "",
             }
 
         if role == "tool":
-            if not tool_call_id:
+            if not message.tool_call_id:
                 raise ValueError("role='tool' requires tool_call_id to match tool result to the call")
 
             return {
@@ -118,32 +107,41 @@ class AnthropicInterface(LLM):
                 "content": [
                     {
                         "type": "tool_result",
-                        "tool_use_id": tool_call_id,
-                        "content": content or "",
+                        "tool_use_id": message.tool_call_id,
+                        "content": message.content or "",
                     }
                 ],
             }
 
         raise ValueError(f"Unsupported role type: {role}")
 
-    def call_model(self, model: str, messages: list, tools: list) -> LLMResponse:
+    def call_model(
+        self,
+        model: str,
+        messages: list[LLMMessage],
+        tools: list[dict[str, Any]],
+    ) -> LLMResponse:
         """Call an Anthropic model and normalize its response."""
         anthropic_messages: list[MessageParam] = []
+        system_prompt: str | None = None
 
-        for item in messages:
-            # _convert_messages() intentionally returns None for system messages.
-            if item is None:
+        for message in messages:
+            if message.role == "system":
+                system_prompt = message.content
                 continue
 
-            anthropic_messages.append(cast(MessageParam, item))
+            converted_message = self._convert_message(message)
+            if converted_message is None:
+                continue
+            anthropic_messages.append(cast(MessageParam, converted_message))
 
         anthropic_tools = self._convert_tools(tools)
 
-        if self._system_prompt:
+        if system_prompt:
             message_t = self.client.messages.create(
                 model=model,
                 max_tokens=1024,
-                system=self._system_prompt,
+                system=system_prompt,
                 messages=anthropic_messages,
                 tools=anthropic_tools,
             )
@@ -158,16 +156,16 @@ class AnthropicInterface(LLM):
         text: str | None = None
         tool_calls: list[ToolCall] = []
 
-        for item in message_t.content:
-            if isinstance(item, TextBlock):
-                text = item.text
+        for content_block in message_t.content:
+            if isinstance(content_block, TextBlock):
+                text = content_block.text
 
-            elif isinstance(item, ToolUseBlock):
+            elif isinstance(content_block, ToolUseBlock):
                 tool_calls.append(
                     ToolCall(
-                        id=item.id,
-                        name=item.name,
-                        arguments=item.input,
+                        id=content_block.id,
+                        name=content_block.name,
+                        arguments=content_block.input,
                     )
                 )
 

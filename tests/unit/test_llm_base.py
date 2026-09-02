@@ -2,7 +2,7 @@
 
 import pytest
 
-from linkforge.llm.base import LLM, LLMResponse, ToolCall
+from linkforge.llm.base import LLM, LLMMessage, LLMResponse, ToolCall
 
 
 class TestToolCall:
@@ -41,17 +41,29 @@ class TestLLMResponse:
         assert resp.tool_calls == []
 
 
+class TestLLMMessage:
+    def test_text_message(self):
+        message = LLMMessage(role="user", content="Hello")
+
+        assert message.role == "user"
+        assert message.content == "Hello"
+        assert message.tool_calls == ()
+        assert message.tool_call_id is None
+
+    def test_assistant_tool_call_message(self):
+        tool_call = ToolCall(id="call_1", name="get_weather", arguments={"city": "Hangzhou"})
+        message = LLMMessage(role="assistant", tool_calls=(tool_call,))
+
+        assert message.tool_calls == (tool_call,)
+
+    def test_tool_result_message(self):
+        message = LLMMessage(role="tool", content="sunny", tool_call_id="call_1")
+
+        assert message.content == "sunny"
+        assert message.tool_call_id == "call_1"
+
+
 class TestLLMBase:
-    def test_convert_tool_calls_not_implemented(self):
-        llm = LLM()
-        with pytest.raises(NotImplementedError):
-            llm._convert_tool_calls([])
-
-    def test_convert_messages_not_implemented(self):
-        llm = LLM()
-        with pytest.raises(NotImplementedError):
-            llm._convert_messages("user", content="hi")
-
     def test_call_model_not_implemented(self):
         llm = LLM()
         with pytest.raises(NotImplementedError):

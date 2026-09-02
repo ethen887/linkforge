@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from linkforge.llm.base import LLM
+from linkforge.llm.base import LLM, LLMMessage
 
 
 class AgentTool:
@@ -50,11 +50,11 @@ class RecAgent:
     def run(self, prompt: str, max_steps: int = 5) -> str | None:
         """Run the agent for at most ``max_steps`` iterations."""
         history = [
-            self.client._convert_messages(
+            LLMMessage(
                 role="system",
                 content=self.system_prompt,
             ),
-            self.client._convert_messages(
+            LLMMessage(
                 role="user",
                 content=prompt,
             ),
@@ -72,9 +72,9 @@ class RecAgent:
 
             if tool_calls:
                 history.append(
-                    self.client._convert_messages(
+                    LLMMessage(
                         role="assistant",
-                        tool_calls=tool_calls,
+                        tool_calls=tuple(tool_calls),
                         content=text,
                     )
                 )
@@ -98,7 +98,7 @@ class RecAgent:
                         print(result)
 
                     history.append(
-                        self.client._convert_messages(
+                        LLMMessage(
                             role="tool",
                             content=str(result),
                             tool_call_id=tool_call.id,
@@ -107,7 +107,7 @@ class RecAgent:
 
             else:
                 history.append(
-                    self.client._convert_messages(
+                    LLMMessage(
                         role="assistant",
                         content=text,
                     )

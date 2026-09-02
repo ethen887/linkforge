@@ -1,7 +1,7 @@
 """Unit tests for the agent framework, using a Fake LLM."""
 
 from linkforge.agent.framework import AgentTool, RecAgent
-from linkforge.llm.base import LLMResponse, ToolCall
+from linkforge.llm.base import LLMMessage, LLMResponse, ToolCall
 from tests.fakes import FakeLLM, RecordingFakeLLM
 
 
@@ -90,18 +90,18 @@ class TestAgentToolCalling:
         assert len(fake.calls) == 2
 
         second_call_messages = fake.calls[1]["messages"]
-        assert [message["role"] for message in second_call_messages] == [
+        assert [message.role for message in second_call_messages] == [
             "system",
             "user",
             "assistant",
             "tool",
         ]
-        assert second_call_messages[2]["tool_calls"][0]["id"] == "call_1"
-        assert second_call_messages[3] == {
-            "role": "tool",
-            "content": "Weather in Hangzhou: sunny, 25C",
-            "tool_call_id": "call_1",
-        }
+        assert second_call_messages[2].tool_calls[0].id == "call_1"
+        assert second_call_messages[3] == LLMMessage(
+            role="tool",
+            content="Weather in Hangzhou: sunny, 25C",
+            tool_call_id="call_1",
+        )
 
     def test_agent_executes_multiple_tool_calls_in_order_before_next_inference(self):
         events = []
@@ -145,22 +145,22 @@ class TestAgentToolCalling:
         assert events == ["llm", "tool:Hangzhou", "tool:Shanghai", "llm"]
 
         second_call_messages = fake.calls[1]["messages"]
-        assert [message["role"] for message in second_call_messages] == [
+        assert [message.role for message in second_call_messages] == [
             "system",
             "user",
             "assistant",
             "tool",
             "tool",
         ]
-        assert [tool_call["id"] for tool_call in second_call_messages[2]["tool_calls"]] == [
+        assert [tool_call.id for tool_call in second_call_messages[2].tool_calls] == [
             "call_1",
             "call_2",
         ]
-        assert [message["tool_call_id"] for message in second_call_messages[3:]] == [
+        assert [message.tool_call_id for message in second_call_messages[3:]] == [
             "call_1",
             "call_2",
         ]
-        assert [message["content"] for message in second_call_messages[3:]] == [
+        assert [message.content for message in second_call_messages[3:]] == [
             "Weather in Hangzhou",
             "Weather in Shanghai",
         ]
@@ -182,11 +182,11 @@ class TestAgentToolCalling:
 
         assert result == "Sorry, I cannot help with that."
         assert len(fake.calls) == 2
-        assert fake.calls[1]["messages"][-1] == {
-            "role": "tool",
-            "content": "Error: 'nonexistent_tool', tool execution failed",
-            "tool_call_id": "call_1",
-        }
+        assert fake.calls[1]["messages"][-1] == LLMMessage(
+            role="tool",
+            content="Error: 'nonexistent_tool', tool execution failed",
+            tool_call_id="call_1",
+        )
 
     def test_agent_returns_tool_execution_exception_to_model(self):
         def failing_tool(location: str) -> str:
@@ -219,11 +219,11 @@ class TestAgentToolCalling:
 
         assert result == "The weather service is unavailable."
         assert len(fake.calls) == 2
-        assert fake.calls[1]["messages"][-1] == {
-            "role": "tool",
-            "content": "Error: weather backend unavailable for Hangzhou, tool execution failed",
-            "tool_call_id": "call_failure",
-        }
+        assert fake.calls[1]["messages"][-1] == LLMMessage(
+            role="tool",
+            content="Error: weather backend unavailable for Hangzhou, tool execution failed",
+            tool_call_id="call_failure",
+        )
 
     def test_agent_respects_max_steps(self):
         """If the fake LLM keeps requesting tools, the agent should give up after max_steps."""
@@ -295,8 +295,8 @@ class TestAgentToolCalling:
 
         # First message should be the system prompt
         messages = fake.calls[0]["messages"]
-        assert messages[0]["role"] == "system"
-        assert messages[0]["content"] == "You are a helpful assistant."
+        assert messages[0].role == "system"
+        assert messages[0].content == "You are a helpful assistant."
         # Second message should be the user prompt
-        assert messages[1]["role"] == "user"
-        assert messages[1]["content"] == "hello"
+        assert messages[1].role == "user"
+        assert messages[1].content == "hello"

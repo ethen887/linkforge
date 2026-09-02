@@ -1,5 +1,7 @@
 """Test doubles for external LinkForge interfaces."""
 
+from typing import Any
+
 from linkforge.action.base import ActionExecutor
 from linkforge.action.models import Action
 from linkforge.agent.browser import BrowserAgent
@@ -7,7 +9,7 @@ from linkforge.agent.models import BrowserDecision
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserElementError, BrowserError
 from linkforge.browser.models import InteractiveElement
-from linkforge.llm.base import LLM, LLMResponse, ToolCall
+from linkforge.llm.base import LLM, LLMMessage, LLMResponse
 from linkforge.observation.base import Observer
 from linkforge.observation.models import Observation
 
@@ -181,35 +183,12 @@ class FakeLLM(LLM):
         """Add a response to the scripted sequence."""
         self.scripted_responses.append(response)
 
-    def _convert_tool_calls(self, tool_calls: list[ToolCall]) -> list[dict]:
-        """Convert tool calls to a generic format."""
-        return [
-            {
-                "id": tc.id,
-                "type": "function",
-                "function": {"name": tc.name, "arguments": str(tc.arguments)},
-            }
-            for tc in tool_calls
-        ]
-
-    def _convert_messages(
+    def call_model(
         self,
-        role: str,
-        content: str | None = None,
-        tool_calls: list[ToolCall] | None = None,
-        tool_call_id: str | None = None,
-    ) -> dict:
-        """Convert messages in a simple format compatible with the fake."""
-        msg = {"role": role}
-        if content is not None:
-            msg["content"] = content
-        if tool_calls:
-            msg["tool_calls"] = self._convert_tool_calls(tool_calls)
-        if tool_call_id:
-            msg["tool_call_id"] = tool_call_id
-        return msg
-
-    def call_model(self, model: str, messages: list, tools: list) -> LLMResponse:
+        model: str,
+        messages: list[LLMMessage],
+        tools: list[dict[str, Any]],
+    ) -> LLMResponse:
         """Return the next scripted response."""
         self.received_model = model
         self.received_messages = list(messages)
@@ -236,7 +215,12 @@ class RecordingFakeLLM(FakeLLM):
         self.calls = []
         self.events = events
 
-    def call_model(self, model: str, messages: list, tools: list) -> LLMResponse:
+    def call_model(
+        self,
+        model: str,
+        messages: list[LLMMessage],
+        tools: list[dict[str, Any]],
+    ) -> LLMResponse:
         if self.events is not None:
             self.events.append("llm")
         self.calls.append(
