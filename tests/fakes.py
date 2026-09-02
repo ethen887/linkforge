@@ -226,11 +226,19 @@ class FakeLLM(LLM):
 class RecordingFakeLLM(FakeLLM):
     """A fake LLM that records all calls for assertions."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(
+        self,
+        scripted_responses: list[LLMResponse] | None = None,
+        *,
+        events: list[str] | None = None,
+    ):
+        super().__init__(scripted_responses)
         self.calls = []
+        self.events = events
 
     def call_model(self, model: str, messages: list, tools: list) -> LLMResponse:
+        if self.events is not None:
+            self.events.append("llm")
         self.calls.append(
             {
                 "model": model,
