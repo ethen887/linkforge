@@ -15,17 +15,22 @@ class FakeBrowser(Browser):
         title: str = "",
         text: str = "",
         observation_error: BrowserError | None = None,
+        action_error: BrowserError | None = None,
     ) -> None:
         self.url = url
         self.page_title = title
         self.page_text = text
         self.observation_error = observation_error
+        self.action_error = action_error
+        self.action_calls: list[tuple[object, ...]] = []
 
     def start(self) -> None:
         pass
 
     def open(self, url: str) -> None:
+        self._raise_action_error()
         self.url = url
+        self.action_calls.append(("open", url))
 
     def current_url(self) -> str:
         self._raise_observation_error()
@@ -40,16 +45,20 @@ class FakeBrowser(Browser):
         return self.page_text
 
     def click(self, selector: str) -> None:
-        pass
+        self._raise_action_error()
+        self.action_calls.append(("click", selector))
 
     def fill(self, selector: str, text: str) -> None:
-        pass
+        self._raise_action_error()
+        self.action_calls.append(("fill", selector, text))
 
     def press(self, selector: str, key: str) -> None:
-        pass
+        self._raise_action_error()
+        self.action_calls.append(("press", selector, key))
 
     def scroll(self, delta_y: int) -> None:
-        pass
+        self._raise_action_error()
+        self.action_calls.append(("scroll", delta_y))
 
     def close(self) -> None:
         pass
@@ -57,6 +66,10 @@ class FakeBrowser(Browser):
     def _raise_observation_error(self) -> None:
         if self.observation_error is not None:
             raise self.observation_error
+
+    def _raise_action_error(self) -> None:
+        if self.action_error is not None:
+            raise self.action_error
 
 
 class FakeLLM(LLM):
