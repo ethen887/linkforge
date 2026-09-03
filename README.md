@@ -1,14 +1,14 @@
 # LinkForge
 
-LinkForge 是一个面向开发者的模块化自动化框架，用于连接网页、代码、API、大语言模型与可执行工作流。
+LinkForge 是一个面向开发者的 Browser Agent Framework，用于构建可观察网页状态、生成结构化决策并执行浏览器动作的 Agent。
 
-> Forge reliable connections between the web, code, AI models, and automated workflows.
+> Build reliable browser agents around explicit observation, decision, and action boundaries.
 
 ## 项目状态
 
 LinkForge 当前处于早期开发阶段。
 
-第一阶段不开发图形化界面，首先建立稳定的核心能力和命令行接口，面向项目开发者进行使用和测试。
+当前首先建立稳定的 Browser、Observation、Action 和 Agent Loop 核心边界，面向项目开发者进行使用和测试。
 
 当核心功能、模块接口和工作流稳定后，再增加图形化界面。
 
@@ -17,10 +17,10 @@ LinkForge 当前处于早期开发阶段。
 LinkForge 将逐步实现以下能力：
 
 - 浏览器自动化控制
-- 网页状态和页面类型识别
+- 结构化网页状态观察
+- 结构化浏览器动作执行
 - 可扩展的大模型接口
-- 自动化工作流编排
-- 命令行操作接口
+- Browser Agent 环境交互循环
 - 结构化日志与错误诊断
 - 自动化测试
 - 面向多人协作的工程流程
@@ -50,9 +50,10 @@ LinkForge 将逐步实现以下能力：
 ```text
 仓库规范建立
 → Python工程初始化
-→ CLI基础能力
 → 浏览器基础能力
-→ 页面识别
-→ 工作流实现
+→ Observation 与 Action
+→ Browser Agent Loop
 → 大模型接入
+→ LLM Browser Agent
+→ CLI 产品化
 → GUI开发

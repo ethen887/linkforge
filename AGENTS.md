@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-LinkForge is a Python 3.10+ package using the `src/` layout. Application code lives in `src/linkforge/`: `agent/` contains orchestration, `browser/` browser adapters, `llm/` provider implementations, `config/` settings, and `tools/` reusable integrations. The CLI entry points are `cli.py` and `__main__.py`. Keep new functionality inside the most specific existing module; add a small, focused module rather than growing unrelated files.
+LinkForge is a Python 3.10+ package using the `src/` layout. Application code lives in `src/linkforge/`: `agent/` contains Browser Agent contracts and orchestration, `browser/` browser adapters, `observation/` page-state capture, `action/` structured browser actions, `llm/` provider implementations, and `config/` settings. Keep new functionality inside the most specific existing module; add a small, focused module rather than growing unrelated files.
 
 Tests mirror product areas under `tests/unit/` and `tests/integration/`; browser integration coverage is in `tests/integration/browser/`. Put shared test doubles in `tests/fakes.py`. Repository and design notes are in `docu/`.
 
@@ -12,7 +12,6 @@ Use `uv` with the committed lockfile:
 
 ```powershell
 uv sync --locked                 # create/update the local environment from uv.lock
-uv run linkforge                 # run the installed CLI
 uv run pytest                    # run the complete test suite
 uv run ruff format --check .     # verify formatting
 uv run ruff check .              # run lint checks

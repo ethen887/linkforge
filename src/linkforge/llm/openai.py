@@ -1,15 +1,16 @@
 import json
+from typing import Any, cast
 
 from openai import OpenAI
 
-from linkforge.llm.base import LLM, LLMResponse, ToolCall
+from linkforge.llm.base import LLM, LLMMessage, LLMResponse, ToolCall
 
 
 class OpenAIInterface(LLM):
     def __init__(self, api_key: str, base_url: str | None = None):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
-    def _convert_tool_calls(self, tool_calls: list[ToolCall]) -> list[dict]:
+    def _convert_tool_calls(self, tool_calls: tuple[ToolCall, ...]) -> list[dict[str, Any]]:
         """Convert LinkForge tool calls to OpenAI function tool-call format."""
         openai_tool_calls = []
 
@@ -30,51 +31,53 @@ class OpenAIInterface(LLM):
 
         return openai_tool_calls
 
-    def _convert_messages(
-        self,
-        role: str,
-        content: str | None = None,
-        tool_calls: list[ToolCall] | None = None,
-        tool_call_id: str | None = None,
-    ) -> dict:
+    def _convert_message(self, message: LLMMessage) -> dict[str, Any]:
         """Convert a LinkForge message to OpenAI message format."""
+        role = message.role
+
         if role in ("system", "user"):
             return {
                 "role": role,
-                "content": content,
+                "content": message.content,
             }
 
         if role == "assistant":
-            if tool_calls:
+            if message.tool_calls:
                 return {
                     "role": role,
-                    "content": content,
-                    "tool_calls": self._convert_tool_calls(tool_calls),
+                    "content": message.content,
+                    "tool_calls": self._convert_tool_calls(message.tool_calls),
                 }
 
             return {
                 "role": role,
-                "content": content,
+                "content": message.content,
             }
 
         if role == "tool":
-            if not tool_call_id:
+            if not message.tool_call_id:
                 raise ValueError("role='tool' requires tool_call_id to match tool result to the call")
 
             return {
                 "role": role,
-                "tool_call_id": tool_call_id,
-                "content": content or "",
+                "tool_call_id": message.tool_call_id,
+                "content": message.content or "",
             }
 
         raise ValueError(f"Unsupported role type: {role}")
 
-    def call_model(self, model: str, messages: list, tools: list) -> LLMResponse:
+    def call_model(
+        self,
+        model: str,
+        messages: list[LLMMessage],
+        tools: list[dict[str, Any]],
+    ) -> LLMResponse:
         """Call an OpenAI-compatible model and normalize its response."""
+        openai_messages = [self._convert_message(message) for message in messages]
         messages_t = self.client.chat.completions.create(
             model=model,
-            messages=messages,
-            tools=tools,
+            messages=cast(Any, openai_messages),
+            tools=cast(Any, tools),
         )
 
         response = messages_t.choices[0].message
