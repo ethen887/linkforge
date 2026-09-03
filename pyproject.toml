@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "linkforge"
 version = "0.1.0"
-description = "Modular automation framework connecting web, code, AI models, and workflows"
+description = "Browser agent framework with explicit observation, decision, and action boundaries"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -26,9 +26,6 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0",
 ]
-
-[project.scripts]
-linkforge = "linkforge.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

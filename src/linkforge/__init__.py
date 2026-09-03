@@ -1,1 +1,1 @@
-"""LinkForge - A modular automation framework connecting web, code, AI models, and workflows."""
+"""LinkForge - A browser agent framework with explicit observation and action boundaries."""

@@ -1,7 +1,5 @@
 """Test doubles for external LinkForge interfaces."""
 
-from typing import Any
-
 from linkforge.action.base import ActionExecutor
 from linkforge.action.models import Action
 from linkforge.agent.browser import BrowserAgent
@@ -9,7 +7,6 @@ from linkforge.agent.models import BrowserDecision
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserElementError, BrowserError
 from linkforge.browser.models import InteractiveElement
-from linkforge.llm.base import LLM, LLMMessage, LLMResponse
 from linkforge.observation.base import Observer
 from linkforge.observation.models import Observation
 
@@ -167,67 +164,3 @@ class FakeBrowser(Browser):
     def _require_target(self, target_id: int) -> None:
         if target_id not in self._active_target_ids:
             raise BrowserElementError(f"Unknown or stale target_id: {target_id}")
-
-
-class FakeLLM(LLM):
-    """A deterministic fake LLM that returns predefined responses for testing."""
-
-    def __init__(self, scripted_responses: list[LLMResponse] | None = None):
-        self.scripted_responses = scripted_responses or []
-        self.call_count = 0
-        self.received_messages = []
-        self.received_tools = []
-        self.received_model = None
-
-    def add_response(self, response: LLMResponse):
-        """Add a response to the scripted sequence."""
-        self.scripted_responses.append(response)
-
-    def call_model(
-        self,
-        model: str,
-        messages: list[LLMMessage],
-        tools: list[dict[str, Any]],
-    ) -> LLMResponse:
-        """Return the next scripted response."""
-        self.received_model = model
-        self.received_messages = list(messages)
-        self.received_tools = list(tools)
-
-        if self.call_count >= len(self.scripted_responses):
-            return LLMResponse(content="No more scripted responses")
-
-        response = self.scripted_responses[self.call_count]
-        self.call_count += 1
-        return response
-
-
-class RecordingFakeLLM(FakeLLM):
-    """A fake LLM that records all calls for assertions."""
-
-    def __init__(
-        self,
-        scripted_responses: list[LLMResponse] | None = None,
-        *,
-        events: list[str] | None = None,
-    ):
-        super().__init__(scripted_responses)
-        self.calls = []
-        self.events = events
-
-    def call_model(
-        self,
-        model: str,
-        messages: list[LLMMessage],
-        tools: list[dict[str, Any]],
-    ) -> LLMResponse:
-        if self.events is not None:
-            self.events.append("llm")
-        self.calls.append(
-            {
-                "model": model,
-                "messages": list(messages),
-                "tools": list(tools),
-            }
-        )
-        return super().call_model(model, messages, tools)
