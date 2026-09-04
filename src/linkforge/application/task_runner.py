@@ -9,6 +9,8 @@ class TaskType(Enum):
     """Course task types understood by the application runtime."""
 
     VIDEO = "video"
+    DOCUMENT = "document"
+    CONTENT = "content"
     COMMENT = "comment"
     QUIZ = "quiz"
     UNKNOWN = "unknown"
@@ -45,11 +47,15 @@ class TaskRunner:
         *,
         detector: TaskDetector,
         video_handler: TaskHandler,
+        document_handler: TaskHandler,
+        content_handler: TaskHandler,
         comment_handler: TaskHandler,
         quiz_handler: TaskHandler,
     ) -> None:
         self._detector = detector
         self._video_handler = video_handler
+        self._document_handler = document_handler
+        self._content_handler = content_handler
         self._comment_handler = comment_handler
         self._quiz_handler = quiz_handler
 
@@ -66,6 +72,10 @@ class TaskRunner:
 
             if task_type is TaskType.VIDEO:
                 self._video_handler.run()
+            elif task_type is TaskType.DOCUMENT:
+                self._document_handler.run()
+            elif task_type is TaskType.CONTENT:
+                self._content_handler.run()
             elif task_type is TaskType.COMMENT:
                 self._comment_handler.run()
             elif task_type is TaskType.QUIZ:

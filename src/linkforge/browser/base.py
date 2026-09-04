@@ -153,6 +153,25 @@ class Browser(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def evaluate_in_frames(self, expression: str) -> tuple[object, ...]:
+        """Evaluate a trusted DOM inspection expression in every page frame.
+
+        Results are returned in frame order as plain Python values, without
+        exposing provider-specific frame objects. Frames detached during a
+        dynamic-page inspection may be omitted.
+
+        Args:
+            expression: JavaScript expression to evaluate in each frame.
+
+        Returns:
+            Provider-neutral evaluation results for successfully inspected frames.
+
+        Raises:
+            BrowserError: The page or one of its frames cannot be inspected.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def click_target(self, target_id: int) -> None:
         """
         Click an element discovered in the current page snapshot.

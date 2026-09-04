@@ -1,0 +1,1 @@
+"""Platform adapter integration tests."""
