@@ -81,6 +81,7 @@ class FakeBrowser(Browser):
         title: str = "",
         text: str = "",
         interactive_elements: tuple[InteractiveElement, ...] = (),
+        frame_evaluation_results: tuple[object, ...] = (),
         observation_error: BrowserError | None = None,
         action_error: BrowserError | None = None,
     ) -> None:
@@ -88,9 +89,11 @@ class FakeBrowser(Browser):
         self.page_title = title
         self.page_text = text
         self.page_interactive_elements = interactive_elements
+        self.frame_evaluation_results = frame_evaluation_results
         self.observation_error = observation_error
         self.action_error = action_error
         self.action_calls: list[tuple[object, ...]] = []
+        self.frame_evaluation_calls: list[str] = []
         self._active_target_ids: set[int] = set()
 
     def start(self) -> None:
@@ -118,6 +121,11 @@ class FakeBrowser(Browser):
         self._raise_observation_error()
         self._active_target_ids = {element.target_id for element in self.page_interactive_elements}
         return self.page_interactive_elements
+
+    def evaluate_in_frames(self, expression: str) -> tuple[object, ...]:
+        self._raise_observation_error()
+        self.frame_evaluation_calls.append(expression)
+        return self.frame_evaluation_results
 
     def click_target(self, target_id: int) -> None:
         self._require_target(target_id)

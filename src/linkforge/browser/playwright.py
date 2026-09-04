@@ -317,6 +317,31 @@ class PlaywrightBrowser(Browser):
             self._targets.clear()
             raise BrowserError("Failed to read interactive elements.") from exc
 
+    def evaluate_in_frames(self, expression: str) -> tuple[object, ...]:
+        """Evaluate an inspection expression, ignoring frames detached during traversal."""
+        page = self._require_page()
+        results: list[object] = []
+
+        try:
+            frames = page.frames
+        except PlaywrightError as exc:
+            raise BrowserError("Failed to inspect page frames.") from exc
+
+        for frame in frames:
+            try:
+                if frame.is_detached():
+                    continue
+
+                results.append(frame.evaluate(expression))
+
+            except PlaywrightError as exc:
+                if "Frame was detached" in str(exc):
+                    continue
+
+                raise BrowserError("Failed to inspect page frames.") from exc
+
+        return tuple(results)
+
     def click_target(self, target_id: int) -> None:
         """Click a logical target from the current interactive-element mapping."""
         target = self._require_target(target_id)

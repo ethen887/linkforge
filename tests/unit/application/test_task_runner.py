@@ -1,9 +1,12 @@
 """Unit tests for the application task-runner lifecycle."""
 
+import ast
+import inspect
 from collections.abc import Sequence
 
 import pytest
 
+import linkforge.application.task_runner as task_runner_module
 from linkforge.application.task_runner import (
     TaskDetector,
     TaskHandler,
@@ -51,19 +54,32 @@ def _runner(
     detector = RecordingTaskDetector(task_types, events=events)
     handlers = {
         TaskType.VIDEO: RecordingTaskHandler("video", events=events),
+        TaskType.DOCUMENT: RecordingTaskHandler("document", events=events),
+        TaskType.CONTENT: RecordingTaskHandler("content", events=events),
         TaskType.COMMENT: RecordingTaskHandler("comment", events=events),
         TaskType.QUIZ: RecordingTaskHandler("quiz", events=events),
     }
     runner = TaskRunner(
         detector=detector,
         video_handler=handlers[TaskType.VIDEO],
+        document_handler=handlers[TaskType.DOCUMENT],
+        content_handler=handlers[TaskType.CONTENT],
         comment_handler=handlers[TaskType.COMMENT],
         quiz_handler=handlers[TaskType.QUIZ],
     )
     return runner, detector, handlers
 
 
-@pytest.mark.parametrize("selected_task", [TaskType.VIDEO, TaskType.COMMENT, TaskType.QUIZ])
+@pytest.mark.parametrize(
+    "selected_task",
+    [
+        TaskType.VIDEO,
+        TaskType.DOCUMENT,
+        TaskType.CONTENT,
+        TaskType.COMMENT,
+        TaskType.QUIZ,
+    ],
+)
 def test_runner_dispatches_only_selected_handler_then_detects_again(
     selected_task: TaskType,
 ) -> None:
@@ -82,14 +98,33 @@ def test_runner_dispatches_only_selected_handler_then_detects_again(
 def test_runner_owns_complete_multi_task_sequence() -> None:
     events: list[str] = []
     runner, detector, handlers = _runner(
-        [TaskType.VIDEO, TaskType.COMMENT, TaskType.QUIZ, TaskType.COMPLETE],
+        [
+            TaskType.VIDEO,
+            TaskType.DOCUMENT,
+            TaskType.CONTENT,
+            TaskType.COMMENT,
+            TaskType.QUIZ,
+            TaskType.COMPLETE,
+        ],
         events=events,
     )
 
     runner.run()
 
-    assert events == ["detect", "video", "detect", "comment", "detect", "quiz", "detect"]
-    assert detector.call_count == 4
+    assert events == [
+        "detect",
+        "video",
+        "detect",
+        "document",
+        "detect",
+        "content",
+        "detect",
+        "comment",
+        "detect",
+        "quiz",
+        "detect",
+    ]
+    assert detector.call_count == 6
     assert all(handler.call_count == 1 for handler in handlers.values())
 
 
@@ -120,5 +155,24 @@ def test_stop_request_exits_at_task_boundary_before_detecting_again() -> None:
 
     assert detector.call_count == 1
     assert handlers[TaskType.VIDEO].call_count == 1
-    assert handlers[TaskType.COMMENT].call_count == 0
-    assert handlers[TaskType.QUIZ].call_count == 0
+    assert all(
+        handler.call_count == (1 if task_type is TaskType.VIDEO else 0)
+        for task_type, handler in handlers.items()
+    )
+
+
+def test_application_runtime_has_no_platform_or_playwright_dependency() -> None:
+    syntax_tree = ast.parse(inspect.getsource(task_runner_module))
+    imported_modules = {
+        node.module
+        for node in ast.walk(syntax_tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+    imported_modules.update(
+        alias.name for node in ast.walk(syntax_tree) if isinstance(node, ast.Import) for alias in node.names
+    )
+
+    assert not any(
+        module == "playwright" or module.startswith("playwright.") for module in imported_modules
+    )
+    assert not any(module.startswith("linkforge.platforms") for module in imported_modules)
