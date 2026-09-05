@@ -2,7 +2,7 @@
 
 import ast
 import inspect
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import pytest
 
@@ -46,10 +46,17 @@ class RecordingTaskHandler(TaskHandler):
         self.call_count += 1
 
 
+def _no_sleep(_seconds: float) -> None:
+    pass
+
+
 def _runner(
     task_types: Sequence[TaskType],
     *,
     events: list[str] | None = None,
+    unknown_retry_attempts: int = 0,
+    unknown_retry_interval_seconds: float = 0.5,
+    sleep: Callable[[float], None] = _no_sleep,
 ) -> tuple[TaskRunner, RecordingTaskDetector, dict[TaskType, RecordingTaskHandler]]:
     detector = RecordingTaskDetector(task_types, events=events)
     handlers = {
@@ -66,6 +73,9 @@ def _runner(
         content_handler=handlers[TaskType.CONTENT],
         comment_handler=handlers[TaskType.COMMENT],
         quiz_handler=handlers[TaskType.QUIZ],
+        unknown_retry_attempts=unknown_retry_attempts,
+        unknown_retry_interval_seconds=unknown_retry_interval_seconds,
+        sleep=sleep,
     )
     return runner, detector, handlers
 
@@ -128,6 +138,21 @@ def test_runner_owns_complete_multi_task_sequence() -> None:
     assert all(handler.call_count == 1 for handler in handlers.values())
 
 
+def test_runner_can_repeat_video_content_video_vertical_slice() -> None:
+    events: list[str] = []
+    runner, detector, handlers = _runner(
+        [TaskType.VIDEO, TaskType.CONTENT, TaskType.VIDEO, TaskType.COMPLETE],
+        events=events,
+    )
+
+    runner.run()
+
+    assert events == ["detect", "video", "detect", "content", "detect", "video", "detect"]
+    assert detector.call_count == 4
+    assert handlers[TaskType.VIDEO].call_count == 2
+    assert handlers[TaskType.CONTENT].call_count == 1
+
+
 def test_complete_exits_without_calling_any_handler() -> None:
     runner, detector, handlers = _runner([TaskType.COMPLETE])
 
@@ -145,6 +170,39 @@ def test_unknown_raises_without_calling_any_handler() -> None:
 
     assert detector.call_count == 1
     assert all(handler.call_count == 0 for handler in handlers.values())
+
+
+def test_transient_unknown_is_retried_with_a_bounded_delay() -> None:
+    sleep_calls: list[float] = []
+    runner, detector, handlers = _runner(
+        [TaskType.UNKNOWN, TaskType.VIDEO, TaskType.COMPLETE],
+        unknown_retry_attempts=1,
+        unknown_retry_interval_seconds=0.25,
+        sleep=sleep_calls.append,
+    )
+
+    runner.run()
+
+    assert detector.call_count == 3
+    assert handlers[TaskType.VIDEO].call_count == 1
+    assert sleep_calls == [0.25]
+
+
+def test_unknown_retry_exhaustion_raises_without_unbounded_detection() -> None:
+    sleep_calls: list[float] = []
+    runner, detector, handlers = _runner(
+        [TaskType.UNKNOWN, TaskType.UNKNOWN],
+        unknown_retry_attempts=1,
+        unknown_retry_interval_seconds=0.25,
+        sleep=sleep_calls.append,
+    )
+
+    with pytest.raises(UnknownTaskError):
+        runner.run()
+
+    assert detector.call_count == 2
+    assert all(handler.call_count == 0 for handler in handlers.values())
+    assert sleep_calls == [0.25]
 
 
 def test_stop_request_exits_at_task_boundary_before_detecting_again() -> None:

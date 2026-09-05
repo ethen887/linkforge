@@ -1,5 +1,6 @@
 """Course-task detection and dispatch lifecycle."""
 
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from enum import Enum
@@ -51,18 +52,29 @@ class TaskRunner:
         content_handler: TaskHandler,
         comment_handler: TaskHandler,
         quiz_handler: TaskHandler,
+        unknown_retry_attempts: int = 0,
+        unknown_retry_interval_seconds: float = 0.5,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        if unknown_retry_attempts < 0:
+            raise ValueError("unknown_retry_attempts must not be negative")
+        if unknown_retry_interval_seconds <= 0:
+            raise ValueError("unknown_retry_interval_seconds must be greater than 0")
+
         self._detector = detector
         self._video_handler = video_handler
         self._document_handler = document_handler
         self._content_handler = content_handler
         self._comment_handler = comment_handler
         self._quiz_handler = quiz_handler
+        self._unknown_retry_attempts = unknown_retry_attempts
+        self._unknown_retry_interval_seconds = unknown_retry_interval_seconds
+        self._sleep = sleep
 
     def run(self, *, should_stop: Callable[[], bool] | None = None) -> None:
         """Dispatch tasks until completion or a stop request at a task boundary."""
         while should_stop is None or not should_stop():
-            task_type = self._detector.detect()
+            task_type = self._detect_with_bounded_unknown_retry()
 
             if task_type is TaskType.COMPLETE:
                 return
@@ -80,3 +92,13 @@ class TaskRunner:
                 self._comment_handler.run()
             elif task_type is TaskType.QUIZ:
                 self._quiz_handler.run()
+
+    def _detect_with_bounded_unknown_retry(self) -> TaskType:
+        for retry_index in range(self._unknown_retry_attempts + 1):
+            task_type = self._detector.detect()
+            if task_type is not TaskType.UNKNOWN:
+                return task_type
+            if retry_index < self._unknown_retry_attempts:
+                self._sleep(self._unknown_retry_interval_seconds)
+
+        return TaskType.UNKNOWN

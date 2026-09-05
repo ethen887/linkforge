@@ -318,7 +318,7 @@ class PlaywrightBrowser(Browser):
             raise BrowserError("Failed to read interactive elements.") from exc
 
     def evaluate_in_frames(self, expression: str) -> tuple[object, ...]:
-        """Evaluate an inspection expression, ignoring frames detached during traversal."""
+        """Evaluate a page expression, ignoring frames detached during traversal."""
         page = self._require_page()
         results: list[object] = []
 

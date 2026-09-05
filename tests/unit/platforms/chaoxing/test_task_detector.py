@@ -29,8 +29,24 @@ def _module(
 def _browser_with_modules(*modules: dict[str, Any]) -> FakeBrowser:
     return FakeBrowser(
         frame_evaluation_results=(
-            {"frame_url": _PAGE_URL, "active_tab_count": 1, "modules": []},
-            {"frame_url": _CONTENT_URL, "active_tab_count": 0, "modules": list(modules)},
+            {
+                "frame_url": _PAGE_URL,
+                "active_tab_count": 1,
+                "active_tab_index": 0,
+                "has_next_tab": True,
+                "modules": [],
+                "video_count": 0,
+                "video": None,
+            },
+            {
+                "frame_url": _CONTENT_URL,
+                "active_tab_count": 0,
+                "active_tab_index": None,
+                "has_next_tab": False,
+                "modules": list(modules),
+                "video_count": 0,
+                "video": None,
+            },
         )
     )
 
