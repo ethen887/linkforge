@@ -32,6 +32,8 @@ LinkForge Playwright 浏览器实现。
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from playwright.sync_api import (
     Browser as PlaywrightNativeBrowser,
 )
@@ -69,13 +71,21 @@ _INTERACTIVE_ELEMENT_ROLES: dict[str, InteractiveElementRole] = {
     "button": "button",
     "textbox": "textbox",
 }
+_TRANSIENT_FRAME_ERROR_MESSAGES = (
+    "Frame was detached",
+    "Execution context was destroyed, most likely because of a navigation",
+)
+
+
+def _is_transient_frame_error(error: PlaywrightError) -> bool:
+    return any(message in str(error) for message in _TRANSIENT_FRAME_ERROR_MESSAGES)
 
 
 class PlaywrightBrowser(Browser):
     """
     基于 Playwright Sync API 的 Browser 实现。
 
-    当前实现采用以下资源模型：
+    默认模式采用以下资源模型：
 
         Playwright Runtime
                 ↓
@@ -85,13 +95,8 @@ class PlaywrightBrowser(Browser):
                 ↓
               Page
 
-    每次运行仅管理：
-    - 一个 Browser；
-    - 一个 BrowserContext；
-    - 一个 Page。
-
-    ``user_data_dir`` 未设置时使用临时 BrowserContext；设置时使用 Chromium
-    persistent context，以便显式指定的 headed smoke 复用既有登录态。
+    指定 profile_dir 时，Chromium persistent context 直接拥有浏览器生命周期。
+    两种模式都只向上层暴露一个 Page。
 
     Args:
         headless:
@@ -99,12 +104,12 @@ class PlaywrightBrowser(Browser):
             False 时可以看到浏览器窗口，适合开发和调试。
         timeout_ms:
             默认操作与导航超时时间，单位为毫秒。
-        user_data_dir:
-            可选 Chromium persistent profile 目录。生产调用默认不启用。
+        profile_dir:
+            可选的独立 Chromium user-data 目录。指定后复用其中的浏览器登录态。
 
     Raises:
         ValueError:
-            timeout_ms 小于等于 0 时抛出。
+            timeout_ms 小于等于 0，或 profile_dir 为空白字符串时抛出。
     """
 
     def __init__(
@@ -112,21 +117,22 @@ class PlaywrightBrowser(Browser):
         *,
         headless: bool = False,
         timeout_ms: int = 15_000,
-        user_data_dir: str | None = None,
+        profile_dir: str | None = None,
     ) -> None:
         if timeout_ms <= 0:
             raise ValueError("timeout_ms must be greater than 0")
-        if user_data_dir is not None and not user_data_dir.strip():
-            raise ValueError("user_data_dir must not be empty")
+        if profile_dir is not None and not profile_dir.strip():
+            raise ValueError("profile_dir must not be empty")
 
         self._headless = headless
         self._timeout_ms = timeout_ms
-        self._user_data_dir = user_data_dir
+        self._profile_dir = str(Path(profile_dir).expanduser()) if profile_dir is not None else None
 
         self._playwright: Playwright | None = None
         self._browser: PlaywrightNativeBrowser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
+        self._persistent_context_active = False
         self._targets: dict[int, ElementHandle] = {}
         self._next_target_id = 1
 
@@ -159,7 +165,7 @@ class PlaywrightBrowser(Browser):
         try:
             self._playwright = sync_playwright().start()
 
-            if self._user_data_dir is None:
+            if self._profile_dir is None:
                 self._browser = self._playwright.chromium.launch(
                     headless=self._headless,
                 )
@@ -167,10 +173,12 @@ class PlaywrightBrowser(Browser):
                 self._page = self._context.new_page()
             else:
                 self._context = self._playwright.chromium.launch_persistent_context(
-                    self._user_data_dir,
+                    user_data_dir=self._profile_dir,
                     headless=self._headless,
                 )
-                self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
+                self._persistent_context_active = True
+                pages = self._context.pages
+                self._page = pages[0] if pages else self._context.new_page()
 
             self._page.set_default_timeout(self._timeout_ms)
             self._page.set_default_navigation_timeout(self._timeout_ms)
@@ -330,7 +338,7 @@ class PlaywrightBrowser(Browser):
             raise BrowserError("Failed to read interactive elements.") from exc
 
     def evaluate_in_frames(self, expression: str) -> tuple[object, ...]:
-        """Evaluate an inspection expression, ignoring frames detached during traversal."""
+        """Evaluate a page expression, ignoring frames invalidated during traversal."""
         page = self._require_page()
         results: list[object] = []
 
@@ -347,7 +355,7 @@ class PlaywrightBrowser(Browser):
                 results.append(frame.evaluate(expression))
 
             except PlaywrightError as exc:
-                if "Frame was detached" in str(exc):
+                if _is_transient_frame_error(exc):
                     continue
 
                 raise BrowserError("Failed to inspect page frames.") from exc
@@ -689,11 +697,13 @@ class PlaywrightBrowser(Browser):
         """
         errors: list[Exception] = []
         self._targets.clear()
+        persistent_context_active = self._persistent_context_active
+        self._persistent_context_active = False
 
         page = self._page
         self._page = None
 
-        if page is not None:
+        if page is not None and not persistent_context_active:
             try:
                 if not page.is_closed():
                     page.close()
