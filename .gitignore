@@ -317,3 +317,4 @@ logs/
 .DS_Store
 Thumbs.db
 desktop.ini
+src/linkforge/platforms/chaoxing/smoke_video_content_e2e.py

@@ -154,11 +154,13 @@ class Browser(ABC):
 
     @abstractmethod
     def evaluate_in_frames(self, expression: str) -> tuple[object, ...]:
-        """Evaluate a trusted DOM inspection expression in every page frame.
+        """Evaluate a trusted provider-neutral page expression in every frame.
 
         Results are returned in frame order as plain Python values, without
         exposing provider-specific frame objects. Frames detached during a
-        dynamic-page inspection may be omitted.
+        dynamic-page evaluation may be omitted. Platform adapters may use this
+        primitive for deterministic DOM inspection or normal page behavior such
+        as requesting HTML media playback; the expression must not forge site state.
 
         Args:
             expression: JavaScript expression to evaluate in each frame.
