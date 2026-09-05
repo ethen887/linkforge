@@ -2,7 +2,7 @@
 
 import pytest
 
-from linkforge.application.task_runner import TaskHandler
+from linkforge.application.task_runner import TaskHandler, TaskType
 from linkforge.platforms.chaoxing.content_handler import (
     ChaoxingContentHandlerConfig,
     ChaoxingContentTaskHandler,
@@ -77,6 +77,7 @@ def _state(
     active_index: int = 0,
     has_next: bool = False,
     modules: list[dict[str, object]] | None = None,
+    viewers: tuple[dict[str, object], ...] = (),
 ) -> tuple[object, ...]:
     return (
         {
@@ -97,7 +98,50 @@ def _state(
             "video_count": 0,
             "video": None,
         },
+        *viewers,
     )
+
+
+def _document_module(
+    *,
+    object_id: str = "141755adf0d07a601e4027b3878aca2b",
+) -> dict[str, object]:
+    return {
+        "module_url": "/ananas/modules/pdf/index.html",
+        "object_id": object_id,
+        "declared_page_count": 2,
+        "has_job_icon": False,
+        "finished": False,
+    }
+
+
+def _document_viewer(
+    *,
+    object_id: str = "141755adf0d07a601e4027b3878aca2b",
+    scroll_y: float,
+) -> dict[str, object]:
+    inner_height = 546.0
+    scroll_height = 1_230.0
+    bottom_distance = scroll_height - (scroll_y + inner_height)
+    return {
+        "frame_url": f"https://pan-yz.chaoxing.com/screen/v2/file_{object_id}",
+        "active_tab_count": 0,
+        "active_tab_index": None,
+        "has_next_tab": False,
+        "modules": [],
+        "video_count": 0,
+        "video": None,
+        "viewer": {
+            "object_id": object_id,
+            "page_count": 2,
+            "visible_pages": [1, 2],
+            "scroll_y": scroll_y,
+            "inner_height": inner_height,
+            "scroll_height": scroll_height,
+            "bottom_distance": bottom_distance,
+            "at_bottom": bottom_distance <= 8,
+        },
+    }
 
 
 def _tree_inspection(
@@ -171,6 +215,43 @@ def test_content_clicks_next_card_without_inspecting_knowledge_tree() -> None:
 
     assert browser.action_calls == [("click", "#prev_tab li.active + li")]
     assert browser.tree_calls == []
+
+
+def test_content_navigation_accepts_ordinary_pdf_at_viewer_bottom() -> None:
+    handled_pdf_state = _state(
+        active_index=0,
+        has_next=True,
+        modules=[_document_module()],
+        viewers=(_document_viewer(scroll_y=684),),
+    )
+    browser = ScriptedContentBrowser(
+        [
+            handled_pdf_state,
+            handled_pdf_state,
+            _state(active_index=1, card_number=1),
+        ]
+    )
+
+    _handler(browser, FakeClock()).run()
+
+    assert browser.action_calls == [("click", "#prev_tab li.active + li")]
+
+
+def test_content_navigation_rejects_unread_ordinary_pdf() -> None:
+    unread_pdf_state = _state(
+        has_next=True,
+        modules=[_document_module()],
+        viewers=(_document_viewer(scroll_y=0),),
+    )
+    browser = ScriptedContentBrowser([unread_pdf_state])
+
+    with pytest.raises(
+        ContentNavigationError,
+        match="pending Chaoxing module appeared.*DOCUMENT",
+    ):
+        _handler(browser, FakeClock()).run()
+
+    assert browser.action_calls == []
 
 
 def test_last_card_clicks_next_knowledge_and_waits_for_knowledge_id_change() -> None:
@@ -272,6 +353,31 @@ def test_transient_frame_replacement_recovers_before_knowledge_changes() -> None
     _handler(browser, FakeClock()).run()
 
 
+@pytest.mark.parametrize(
+    "transient_state",
+    [
+        ChaoxingInspectionError("detached repeatedly"),
+        (),
+    ],
+)
+def test_authoritative_safety_check_times_out_when_state_stays_unknown(
+    transient_state: tuple[object, ...] | ChaoxingInspectionError,
+) -> None:
+    browser = ScriptedContentBrowser(
+        [
+            _state(has_next=True),
+            transient_state,
+        ]
+    )
+    clock = FakeClock()
+
+    with pytest.raises(ContentNavigationError, match="safe for CONTENT navigation"):
+        _handler(browser, clock).run()
+
+    assert clock.now == 3.0
+    assert browser.action_calls == []
+
+
 def test_page_without_knowledge_id_fails_before_tree_navigation() -> None:
     browser = ScriptedContentBrowser([_state(knowledge_id=None)])
 
@@ -281,23 +387,52 @@ def test_page_without_knowledge_id_fails_before_tree_navigation() -> None:
     assert browser.tree_calls == []
 
 
-def test_pending_module_race_prevents_content_from_skipping_work() -> None:
+@pytest.mark.parametrize(
+    ("module", "expected_task"),
+    [
+        (
+            {
+                "module_url": "/ananas/modules/video/index.html",
+                "has_job_icon": True,
+                "finished": False,
+            },
+            TaskType.VIDEO,
+        ),
+        (
+            {
+                "module_url": "/ananas/modules/work/index.html",
+                "has_job_icon": True,
+                "finished": False,
+            },
+            TaskType.QUIZ,
+        ),
+        (
+            {
+                "module_url": "/ananas/modules/insertbbs/index.html",
+                "has_job_icon": True,
+                "finished": False,
+            },
+            TaskType.COMMENT,
+        ),
+    ],
+)
+def test_pending_module_race_prevents_content_from_skipping_work(
+    module: dict[str, object],
+    expected_task: TaskType,
+) -> None:
     browser = ScriptedContentBrowser(
         [
             _state(
                 has_next=True,
-                modules=[
-                    {
-                        "module_url": "/ananas/modules/video/index.html",
-                        "has_job_icon": True,
-                        "finished": False,
-                    }
-                ],
+                modules=[module],
             )
         ]
     )
 
-    with pytest.raises(ContentNavigationError, match="pending Chaoxing module appeared"):
+    with pytest.raises(
+        ContentNavigationError,
+        match=rf"pending Chaoxing module appeared.*{expected_task.name}",
+    ):
         _handler(browser, FakeClock()).run()
 
     assert browser.action_calls == []

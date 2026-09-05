@@ -15,7 +15,11 @@ def test_detector_reads_pending_activity_from_card_frame() -> None:
             <iframe src="/ananas/modules/video/"></iframe>
         </div>
         <div class="ans-attach-ct">
-            <iframe src="/ananas/modules/pdf/"></iframe>
+            <span class="ans-job-icon"></span>
+            <iframe
+                data='{"objectid":"pdf-a","pagenum":2}'
+                src="/ananas/modules/pdf/"
+            ></iframe>
         </div>
         <div class="ans-attach-ct">
             <iframe src="/ananas/modules/work/"></iframe>
