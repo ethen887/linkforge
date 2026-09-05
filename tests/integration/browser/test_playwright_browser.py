@@ -20,6 +20,7 @@ PlaywrightBrowser 集成测试。
 """
 
 from collections.abc import Generator
+from pathlib import Path
 from urllib.parse import quote
 
 import pytest
@@ -277,6 +278,47 @@ def test_browser_close_is_idempotent(
 
     browser.close()
     browser.close()
+
+
+def test_persistent_profile_context_can_start_and_close_idempotently(tmp_path: Path) -> None:
+    browser = PlaywrightBrowser(
+        headless=True,
+        timeout_ms=3_000,
+        profile_dir=str(tmp_path / "profile"),
+    )
+
+    browser.start()
+    browser.close()
+    browser.close()
+
+
+def test_persistent_profile_reuses_local_storage(tmp_path: Path) -> None:
+    page_path = tmp_path / "persistent-state.html"
+    page_path.write_text("<p>Persistent profile state</p>", encoding="utf-8")
+    page_url = page_path.as_uri()
+    profile_dir = str(tmp_path / "profile")
+
+    with PlaywrightBrowser(
+        headless=True,
+        timeout_ms=3_000,
+        profile_dir=profile_dir,
+    ) as first_browser:
+        first_browser.open(page_url)
+        first_browser.evaluate_in_frames(
+            "() => localStorage.setItem('linkforge-profile-test', 'persisted')"
+        )
+
+    with PlaywrightBrowser(
+        headless=True,
+        timeout_ms=3_000,
+        profile_dir=profile_dir,
+    ) as second_browser:
+        second_browser.open(page_url)
+        stored_values = second_browser.evaluate_in_frames(
+            "() => localStorage.getItem('linkforge-profile-test')"
+        )
+
+    assert "persisted" in stored_values
 
 
 def test_browser_operation_before_start_raises_closed_error(

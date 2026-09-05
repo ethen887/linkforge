@@ -29,6 +29,7 @@ class ChaoxingPageState:
     """Validated snapshot of the active Chaoxing card and its video frames."""
 
     content_frame_url: str
+    knowledge_id: str | None
     active_tab_index: int
     has_next_tab: bool
     modules: tuple[ChaoxingModuleState, ...]

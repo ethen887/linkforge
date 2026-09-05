@@ -2,6 +2,7 @@
 
 from math import isfinite
 from typing import TypeGuard
+from urllib.parse import parse_qs, urlparse
 
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserError
@@ -119,6 +120,7 @@ def inspect_chaoxing_page(browser: Browser) -> ChaoxingPageState:
     content_frame_url, modules = content_frames[0]
     return ChaoxingPageState(
         content_frame_url=content_frame_url,
+        knowledge_id=_parse_knowledge_id(content_frame_url),
         active_tab_index=active_tab_index,
         has_next_tab=has_next_tab,
         modules=modules,
@@ -133,6 +135,21 @@ def first_pending_module(state: ChaoxingPageState) -> ChaoxingModuleState | None
             continue
         return module
     return None
+
+
+def _parse_knowledge_id(content_frame_url: str) -> str | None:
+    parsed_url = urlparse(content_frame_url)
+    values = parse_qs(parsed_url.query).get("knowledgeid")
+
+    # Local data-URL fixtures encode the Chaoxing route in the fragment.
+    if values is None and "?" in parsed_url.fragment:
+        values = parse_qs(parsed_url.fragment.partition("?")[2]).get("knowledgeid")
+
+    if values is None:
+        return None
+    if len(values) != 1 or not values[0].strip():
+        raise ChaoxingInspectionError("Chaoxing content frame knowledgeId is malformed.")
+    return values[0]
 
 
 def _parse_modules(value: object) -> tuple[ChaoxingModuleState, ...]:
