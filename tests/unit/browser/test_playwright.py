@@ -67,3 +67,8 @@ def test_evaluate_in_frames_converts_other_playwright_errors() -> None:
         browser.evaluate_in_frames("() => document.title")
 
     assert exc_info.value.__cause__ is playwright_error
+
+
+def test_persistent_profile_path_must_not_be_empty() -> None:
+    with pytest.raises(ValueError, match="user_data_dir must not be empty"):
+        PlaywrightBrowser(user_data_dir="  ")

@@ -1,42 +1,20 @@
 """Deterministic task detection for Chaoxing course cards."""
 
-from typing import Any
-
 from linkforge.application.task_runner import TaskDetector, TaskType
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserError
+from linkforge.platforms.chaoxing.document_inspection import (
+    document_viewer_is_ready,
+    parse_document_inspection,
+    parse_module_basics,
+)
+from linkforge.platforms.chaoxing.dom import CHAOXING_CARD_STATE_SCRIPT
+from linkforge.platforms.chaoxing.models import ChaoxingDocumentModuleState
 
-_CHAOXING_STATE_SCRIPT = """() => {
-    const frameUrl = window.location.href;
-    const activeTabCount = document.querySelectorAll("#prev_tab li.active").length;
-    const modules = [];
-
-    if (frameUrl.includes("/mooc-ans/knowledge/cards")) {
-        const moduleFrames = document.querySelectorAll('iframe[src*="/ananas/modules/"]');
-        for (const moduleFrame of moduleFrames) {
-            const container = moduleFrame.closest(".ans-attach-ct");
-            const hasJobIcon = container
-                ? container.querySelector(".ans-job-icon") !== null
-                : false;
-
-            modules.push({
-                module_url: moduleFrame.getAttribute("src"),
-                has_job_icon: hasJobIcon,
-                finished: hasJobIcon && container.classList.contains("ans-job-finished"),
-            });
-        }
-    }
-
-    return {
-        frame_url: frameUrl,
-        active_tab_count: activeTabCount,
-        modules,
-    };
-}"""
-
+_PDF_MODULE_PATH = "/ananas/modules/pdf/"
 _MODULE_TASK_TYPES = {
     "/ananas/modules/video/": TaskType.VIDEO,
-    "/ananas/modules/pdf/": TaskType.DOCUMENT,
+    _PDF_MODULE_PATH: TaskType.DOCUMENT,
     "/ananas/modules/work/": TaskType.QUIZ,
     "/ananas/modules/insertbbs/": TaskType.COMMENT,
 }
@@ -51,72 +29,42 @@ class ChaoxingTaskDetector(TaskDetector):
     def detect(self) -> TaskType:
         """Return a deterministic task type from the current Chaoxing card."""
         try:
-            frame_results = self._browser.evaluate_in_frames(_CHAOXING_STATE_SCRIPT)
-        except BrowserError:
-            return TaskType.UNKNOWN
-
-        content_frame = self._find_current_content_frame(frame_results)
-        if content_frame is None:
-            return TaskType.UNKNOWN
-
-        modules = content_frame.get("modules")
-        if not isinstance(modules, list):
-            return TaskType.UNKNOWN
-
-        for module in modules:
-            if not isinstance(module, dict):
+            frame_results = self._browser.evaluate_in_frames(CHAOXING_CARD_STATE_SCRIPT)
+            inspection = parse_document_inspection(frame_results)
+            if inspection is None:
                 return TaskType.UNKNOWN
 
-            module_url = module.get("module_url")
-            has_job_icon = module.get("has_job_icon")
-            finished = module.get("finished")
-            if (
-                not isinstance(module_url, str)
-                or not isinstance(has_job_icon, bool)
-                or not isinstance(finished, bool)
-            ):
-                return TaskType.UNKNOWN
+            for module_index, raw_module in enumerate(inspection.modules):
+                module_url, has_job_icon, finished = parse_module_basics(raw_module)
 
-            if has_job_icon and finished:
-                continue
+                if _PDF_MODULE_PATH in module_url:
+                    document = ChaoxingDocumentModuleState.from_raw(
+                        raw_module,
+                        module_index=module_index,
+                    )
+                    if document.has_job_icon and document.finished:
+                        continue
 
-            return self._classify_module(module_url)
+                    viewer = inspection.viewers.get(document.object_id)
+                    if (
+                        viewer is not None
+                        and document_viewer_is_ready(document, viewer)
+                        and viewer.at_bottom
+                    ):
+                        continue
+                    return TaskType.DOCUMENT
+
+                if has_job_icon and finished:
+                    continue
+                return self._classify_module(module_url)
+        except (BrowserError, ValueError):
+            return TaskType.UNKNOWN
 
         return TaskType.CONTENT
-
-    @staticmethod
-    def _find_current_content_frame(frame_results: tuple[object, ...]) -> dict[str, Any] | None:
-        active_tab_count = 0
-        content_frames: list[dict[str, Any]] = []
-
-        for result in frame_results:
-            if not isinstance(result, dict):
-                return None
-
-            frame_url = result.get("frame_url")
-            frame_active_tab_count = result.get("active_tab_count")
-            if (
-                not isinstance(frame_url, str)
-                or not isinstance(frame_active_tab_count, int)
-                or isinstance(frame_active_tab_count, bool)
-                or frame_active_tab_count < 0
-            ):
-                return None
-
-            active_tab_count += frame_active_tab_count
-
-            if "/mooc-ans/knowledge/cards" in frame_url:
-                content_frames.append(result)
-
-        if active_tab_count != 1 or len(content_frames) != 1:
-            return None
-
-        return content_frames[0]
 
     @staticmethod
     def _classify_module(module_url: str) -> TaskType:
         for module_path, task_type in _MODULE_TASK_TYPES.items():
             if module_path in module_url:
                 return task_type
-
         return TaskType.UNKNOWN

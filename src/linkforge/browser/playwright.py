@@ -85,12 +85,13 @@ class PlaywrightBrowser(Browser):
                 ↓
               Page
 
-    第一阶段仅管理：
+    每次运行仅管理：
     - 一个 Browser；
     - 一个 BrowserContext；
     - 一个 Page。
 
-    暂不支持多标签页、多 Context、持久化 Cookie 等复杂能力。
+    ``user_data_dir`` 未设置时使用临时 BrowserContext；设置时使用 Chromium
+    persistent context，以便显式指定的 headed smoke 复用既有登录态。
 
     Args:
         headless:
@@ -98,6 +99,8 @@ class PlaywrightBrowser(Browser):
             False 时可以看到浏览器窗口，适合开发和调试。
         timeout_ms:
             默认操作与导航超时时间，单位为毫秒。
+        user_data_dir:
+            可选 Chromium persistent profile 目录。生产调用默认不启用。
 
     Raises:
         ValueError:
@@ -109,12 +112,16 @@ class PlaywrightBrowser(Browser):
         *,
         headless: bool = False,
         timeout_ms: int = 15_000,
+        user_data_dir: str | None = None,
     ) -> None:
         if timeout_ms <= 0:
             raise ValueError("timeout_ms must be greater than 0")
+        if user_data_dir is not None and not user_data_dir.strip():
+            raise ValueError("user_data_dir must not be empty")
 
         self._headless = headless
         self._timeout_ms = timeout_ms
+        self._user_data_dir = user_data_dir
 
         self._playwright: Playwright | None = None
         self._browser: PlaywrightNativeBrowser | None = None
@@ -152,13 +159,18 @@ class PlaywrightBrowser(Browser):
         try:
             self._playwright = sync_playwright().start()
 
-            self._browser = self._playwright.chromium.launch(
-                headless=self._headless,
-            )
-
-            self._context = self._browser.new_context()
-
-            self._page = self._context.new_page()
+            if self._user_data_dir is None:
+                self._browser = self._playwright.chromium.launch(
+                    headless=self._headless,
+                )
+                self._context = self._browser.new_context()
+                self._page = self._context.new_page()
+            else:
+                self._context = self._playwright.chromium.launch_persistent_context(
+                    self._user_data_dir,
+                    headless=self._headless,
+                )
+                self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
 
             self._page.set_default_timeout(self._timeout_ms)
             self._page.set_default_navigation_timeout(self._timeout_ms)

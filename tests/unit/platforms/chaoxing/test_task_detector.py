@@ -16,21 +16,56 @@ _CONTENT_URL = "https://mooc1.chaoxing.com/mooc-ans/knowledge/cards?num=1"
 def _module(
     module_path: str | None,
     *,
+    object_id: str = "pdf-a",
+    declared_page_count: int | None = 2,
     has_job_icon: bool = False,
     finished: bool = False,
 ) -> dict[str, Any]:
-    return {
+    module = {
         "module_url": module_path,
         "has_job_icon": has_job_icon,
         "finished": finished,
     }
+    if isinstance(module_path, str) and "/ananas/modules/pdf/" in module_path:
+        module["object_id"] = object_id
+        module["declared_page_count"] = declared_page_count
+    return module
 
 
-def _browser_with_modules(*modules: dict[str, Any]) -> FakeBrowser:
+def _viewer(
+    object_id: str,
+    *,
+    scroll_y: float,
+    page_count: int = 2,
+    inner_height: float = 546,
+    scroll_height: float = 1_230,
+) -> dict[str, object]:
+    return {
+        "frame_url": f"https://pan-yz.chaoxing.com/screen/v2/file_{object_id}",
+        "active_tab_count": 0,
+        "modules": [],
+        "viewer": {
+            "object_id": object_id,
+            "page_count": page_count,
+            "visible_pages": [1],
+            "scroll_y": scroll_y,
+            "inner_height": inner_height,
+            "scroll_height": scroll_height,
+            "bottom_distance": scroll_height - (scroll_y + inner_height),
+            "at_bottom": scroll_height - (scroll_y + inner_height) <= 8,
+        },
+    }
+
+
+def _browser_with_modules(
+    *modules: dict[str, Any],
+    viewers: tuple[dict[str, object], ...] = (),
+) -> FakeBrowser:
     return FakeBrowser(
         frame_evaluation_results=(
             {"frame_url": _PAGE_URL, "active_tab_count": 1, "modules": []},
             {"frame_url": _CONTENT_URL, "active_tab_count": 0, "modules": list(modules)},
+            *viewers,
         )
     )
 
@@ -39,7 +74,7 @@ def _browser_with_modules(*modules: dict[str, Any]) -> FakeBrowser:
     ("module", "expected"),
     [
         (_module("/ananas/modules/video/index.html", has_job_icon=True), TaskType.VIDEO),
-        (_module("/ananas/modules/pdf/index.html"), TaskType.DOCUMENT),
+        (_module("/ananas/modules/pdf/index.html", has_job_icon=True), TaskType.DOCUMENT),
         (_module("/ananas/modules/work/index.html"), TaskType.QUIZ),
         (_module("/ananas/modules/insertbbs/index.html"), TaskType.COMMENT),
     ],
@@ -62,6 +97,80 @@ def test_content_frame_without_modules_is_content() -> None:
     assert ChaoxingTaskDetector(_browser_with_modules()).detect() is TaskType.CONTENT
 
 
+def test_document_without_job_icon_and_unread_viewer_is_document() -> None:
+    browser = _browser_with_modules(_module("/ananas/modules/pdf/index.html"))
+
+    assert ChaoxingTaskDetector(browser).detect() is TaskType.DOCUMENT
+
+
+def test_document_without_job_icon_at_bottom_is_content() -> None:
+    browser = _browser_with_modules(
+        _module("/ananas/modules/pdf/index.html"),
+        viewers=(_viewer("pdf-a", scroll_y=684),),
+    )
+
+    assert ChaoxingTaskDetector(browser).detect() is TaskType.CONTENT
+
+
+def test_incomplete_viewer_mount_is_still_document_even_if_temporarily_at_bottom() -> None:
+    browser = _browser_with_modules(
+        _module("/ananas/modules/pdf/index.html", declared_page_count=2),
+        viewers=(_viewer("pdf-a", scroll_y=684, page_count=1),),
+    )
+
+    assert ChaoxingTaskDetector(browser).detect() is TaskType.DOCUMENT
+
+
+def test_unread_document_without_job_icon_precedes_later_task_point() -> None:
+    browser = _browser_with_modules(
+        _module("/ananas/modules/pdf/index.html"),
+        _module("/ananas/modules/video/index.html", has_job_icon=True),
+    )
+
+    assert ChaoxingTaskDetector(browser).detect() is TaskType.DOCUMENT
+
+
+@pytest.mark.parametrize(
+    ("module_path", "expected"),
+    [
+        ("/ananas/modules/video/index.html", TaskType.VIDEO),
+        ("/ananas/modules/work/index.html", TaskType.QUIZ),
+        ("/ananas/modules/insertbbs/index.html", TaskType.COMMENT),
+    ],
+)
+def test_document_at_bottom_reveals_later_task_point(
+    module_path: str,
+    expected: TaskType,
+) -> None:
+    browser = _browser_with_modules(
+        _module("/ananas/modules/pdf/index.html"),
+        _module(module_path, has_job_icon=True),
+        viewers=(_viewer("pdf-a", scroll_y=684),),
+    )
+
+    assert ChaoxingTaskDetector(browser).detect() is expected
+
+
+def test_first_document_at_bottom_reveals_second_unread_document() -> None:
+    browser = _browser_with_modules(
+        _module("/ananas/modules/pdf/index.html", object_id="pdf-a"),
+        _module("/ananas/modules/pdf/index.html", object_id="pdf-b"),
+        viewers=(
+            _viewer("pdf-a", scroll_y=684),
+            _viewer("pdf-b", scroll_y=0),
+        ),
+    )
+
+    assert ChaoxingTaskDetector(browser).detect() is TaskType.DOCUMENT
+
+
+def test_pdf_with_missing_object_id_is_unknown() -> None:
+    malformed_pdf = _module("/ananas/modules/pdf/index.html")
+    malformed_pdf["object_id"] = None
+
+    assert ChaoxingTaskDetector(_browser_with_modules(malformed_pdf)).detect() is TaskType.UNKNOWN
+
+
 def test_all_finished_job_modules_are_content() -> None:
     browser = _browser_with_modules(
         _module("/ananas/modules/video/index.html", has_job_icon=True, finished=True),
@@ -75,7 +184,7 @@ def test_all_finished_job_modules_are_content() -> None:
 def test_finished_job_video_is_skipped_for_unfinished_document() -> None:
     browser = _browser_with_modules(
         _module("/ananas/modules/video/index.html", has_job_icon=True, finished=True),
-        _module("/ananas/modules/pdf/index.html"),
+        _module("/ananas/modules/pdf/index.html", has_job_icon=True),
     )
 
     assert ChaoxingTaskDetector(browser).detect() is TaskType.DOCUMENT
