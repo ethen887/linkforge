@@ -68,6 +68,56 @@ def _create_browser(config: BrowserConfig) -> PlaywrightBrowser:
     )
 
 
+def test_browser_captures_only_popup_from_frame_click_and_restores_source(
+    browser: PlaywrightBrowser,
+) -> None:
+    frame_url = (
+        _make_data_url(
+            """<button id="entry">open</button><script>
+            entry.onclick=()=>{const w=open();w.document.title='topic';
+            w.document.body.innerHTML='<textarea></textarea>'};</script>"""
+        )
+        + "#/discussion-frame"
+    )
+    browser.open(_make_data_url(f'<iframe src="{frame_url}"></iframe>'))
+    source = browser.current_page()
+    existing = browser._require_page().context.new_page()
+    existing.set_content("<title>existing</title>")
+
+    topic = browser.open_new_page_from_frame("/discussion-frame", "#entry", timeout_ms=3_000)
+
+    assert topic.page_id != source.page_id
+    assert browser.title() == "topic"
+    assert not existing.is_closed()
+    browser.close_page(topic)
+    browser.switch_page(source)
+    assert browser.current_page().page_id == source.page_id
+    assert not existing.is_closed()
+
+
+def test_switching_pages_invalidates_interactive_target_mapping(
+    browser: PlaywrightBrowser,
+) -> None:
+    frame_url = (
+        _make_data_url(
+            """<button id="entry">open</button><script>
+            entry.onclick=()=>{const w=open();
+            w.document.body.innerHTML='<button>topic</button>'};</script>"""
+        )
+        + "#/discussion-frame"
+    )
+    browser.open(_make_data_url(f'<button>source</button><iframe src="{frame_url}"></iframe>'))
+    source = browser.current_page()
+    stale_target = browser.interactive_elements()[0].target_id
+
+    topic = browser.open_new_page_from_frame("/discussion-frame", "#entry", timeout_ms=3_000)
+
+    with pytest.raises(BrowserElementError):
+        browser.click_target(stale_target)
+    browser.close_page(topic)
+    browser.switch_page(source)
+
+
 @pytest.fixture
 def browser_config() -> BrowserConfig:
     """

@@ -60,7 +60,7 @@ from .exceptions import (
     BrowserStartError,
     BrowserTimeoutError,
 )
-from .models import InteractiveElement, InteractiveElementRole
+from .models import BrowserPage, InteractiveElement, InteractiveElementRole
 
 _INTERACTIVE_ELEMENT_SELECTOR = (
     'a[href], button, input:not([type="hidden"]), textarea, '
@@ -135,6 +135,8 @@ class PlaywrightBrowser(Browser):
         self._persistent_context_active = False
         self._targets: dict[int, ElementHandle] = {}
         self._next_target_id = 1
+        self._pages: dict[int, Page] = {}
+        self._next_page_id = 1
 
     def start(self) -> None:
         """
@@ -182,6 +184,8 @@ class PlaywrightBrowser(Browser):
 
             self._page.set_default_timeout(self._timeout_ms)
             self._page.set_default_navigation_timeout(self._timeout_ms)
+            self._pages = {self._next_page_id: self._page}
+            self._next_page_id += 1
 
         except Exception as exc:
             # 启动过程中任何一步失败，都需要清理已经创建的部分资源。
@@ -361,6 +365,91 @@ class PlaywrightBrowser(Browser):
                 raise BrowserError("Failed to inspect page frames.") from exc
 
         return tuple(results)
+
+    def current_page(self) -> BrowserPage:
+        """Return the provider-neutral identity of the selected page."""
+        page = self._require_page()
+        for page_id, managed in self._pages.items():
+            if managed == page:
+                return BrowserPage(page_id=page_id, url=page.url)
+        raise BrowserClosedError("The current browser page is not managed.")
+
+    def open_new_page_from_frame(
+        self,
+        frame_url_contains: str,
+        selector: str,
+        *,
+        timeout_ms: int,
+    ) -> BrowserPage:
+        """Capture the popup caused by one exact frame-scoped click."""
+        if not frame_url_contains.strip() or not selector.strip():
+            raise ValueError("frame_url_contains and selector must not be empty")
+        if timeout_ms <= 0:
+            raise ValueError("timeout_ms must be greater than 0")
+        source = self._require_page()
+        try:
+            candidates = []
+            for frame in source.frames:
+                if frame.is_detached() or frame_url_contains not in frame.url:
+                    continue
+                locator = frame.locator(f"{selector}:visible")
+                if locator.count():
+                    candidates.append((frame, locator))
+            if len(candidates) != 1:
+                raise BrowserElementError(
+                    f"Expected one matching frame target, found {len(candidates)}: {frame_url_contains}"
+                )
+            _, target = candidates[0]
+            count = target.count()
+            if count != 1 or not target.is_enabled():
+                raise BrowserElementError(f"Expected one enabled popup target, found {count}: {selector}")
+            with source.expect_popup(timeout=timeout_ms) as popup_event:
+                target.click(timeout=timeout_ms)
+            popup = popup_event.value
+            popup.set_default_timeout(self._timeout_ms)
+            popup.set_default_navigation_timeout(self._timeout_ms)
+            popup.bring_to_front()
+        except BrowserElementError:
+            raise
+        except PlaywrightTimeoutError as exc:
+            raise BrowserTimeoutError("Timed out while opening a new page from a frame click.") from exc
+        except PlaywrightError as exc:
+            raise BrowserNavigationError("Failed to open a new page from a frame click.") from exc
+
+        page_id = self._next_page_id
+        self._next_page_id += 1
+        self._pages[page_id] = popup
+        self._page = popup
+        self._targets.clear()
+        return BrowserPage(page_id=page_id, url=popup.url)
+
+    def switch_page(self, page: BrowserPage) -> None:
+        """Select a page previously returned by this Browser instance."""
+        managed = self._pages.get(page.page_id)
+        if managed is None or managed.is_closed():
+            raise BrowserClosedError(f"Managed browser page is unavailable: {page.page_id}")
+        try:
+            managed.bring_to_front()
+        except PlaywrightError as exc:
+            raise BrowserNavigationError(f"Failed to activate browser page: {page.page_id}") from exc
+        self._page = managed
+        self._targets.clear()
+
+    def close_page(self, page: BrowserPage) -> None:
+        """Close exactly one managed page and invalidate its logical targets."""
+        managed = self._pages.get(page.page_id)
+        if managed is None:
+            raise BrowserClosedError(f"Managed browser page is unavailable: {page.page_id}")
+        try:
+            if not managed.is_closed():
+                managed.close()
+        except PlaywrightError as exc:
+            raise BrowserError(f"Failed to close browser page: {page.page_id}") from exc
+        finally:
+            self._pages.pop(page.page_id, None)
+            if self._page == managed:
+                self._page = None
+            self._targets.clear()
 
     def click_target(self, target_id: int) -> None:
         """Click a logical target from the current interactive-element mapping."""
@@ -697,6 +786,7 @@ class PlaywrightBrowser(Browser):
         """
         errors: list[Exception] = []
         self._targets.clear()
+        self._pages.clear()
         persistent_context_active = self._persistent_context_active
         self._persistent_context_active = False
 

@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from types import TracebackType
 from typing import Literal, Self
 
-from linkforge.browser.models import InteractiveElement
+from linkforge.browser.models import BrowserPage, InteractiveElement
 
 
 class Browser(ABC):
@@ -171,6 +171,32 @@ class Browser(ABC):
         Raises:
             BrowserError: The page or one of its frames cannot be inspected.
         """
+        raise NotImplementedError
+
+    @abstractmethod
+    def current_page(self) -> BrowserPage:
+        """Return an opaque reference to the current page."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def open_new_page_from_frame(
+        self,
+        frame_url_contains: str,
+        selector: str,
+        *,
+        timeout_ms: int,
+    ) -> BrowserPage:
+        """Click one element in one matching frame and capture its popup page."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def switch_page(self, page: BrowserPage) -> None:
+        """Switch subsequent Browser operations to a managed page."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def close_page(self, page: BrowserPage) -> None:
+        """Close one managed page without selecting another page implicitly."""
         raise NotImplementedError
 
     @abstractmethod

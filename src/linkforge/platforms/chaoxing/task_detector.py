@@ -3,12 +3,19 @@
 from linkforge.application.task_runner import TaskDetector, TaskType
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserError
+from linkforge.platforms.chaoxing.comment_state import (
+    COMMENT_MODULE_PATH,
+    CommentIdentityError,
+    CommentSession,
+    comment_identity,
+)
 from linkforge.platforms.chaoxing.document_inspection import (
     document_viewer_is_ready,
     parse_document_inspection,
     parse_module_basics,
 )
-from linkforge.platforms.chaoxing.dom import CHAOXING_CARD_STATE_SCRIPT
+from linkforge.platforms.chaoxing.dom import CHAOXING_CARD_STATE_SCRIPT, inspect_chaoxing_page
+from linkforge.platforms.chaoxing.exceptions import ChaoxingInspectionError
 from linkforge.platforms.chaoxing.models import ChaoxingDocumentModuleState
 
 _PDF_MODULE_PATH = "/ananas/modules/pdf/"
@@ -24,8 +31,9 @@ _MODULE_TASK_TYPES = {
 class ChaoxingTaskDetector(TaskDetector):
     """Detect the first pending module in the current Chaoxing content frame."""
 
-    def __init__(self, browser: Browser) -> None:
+    def __init__(self, browser: Browser, *, comment_session: CommentSession | None = None) -> None:
         self._browser = browser
+        self._comment_session = comment_session
 
     def detect(self) -> TaskType:
         """Return a deterministic task type from the current Chaoxing card."""
@@ -73,9 +81,17 @@ class ChaoxingTaskDetector(TaskDetector):
                 if has_job_icon and finished:
                     continue
 
+                if COMMENT_MODULE_PATH in module_url and self._comment_session is not None:
+                    state = inspect_chaoxing_page(self._browser)
+                    if module_index >= len(state.modules) or state.modules[module_index].url != module_url:
+                        return TaskType.UNKNOWN
+                    identity = comment_identity(self._browser.current_url(), state, module_index)
+                    if self._comment_session.is_handled(identity):
+                        continue
+
                 return self._classify_module(module_url)
 
-        except (BrowserError, ValueError):
+        except (BrowserError, ChaoxingInspectionError, CommentIdentityError, ValueError):
             return TaskType.UNKNOWN
 
         # No remaining pending module in the current Card.

@@ -6,7 +6,7 @@ from linkforge.agent.browser import BrowserAgent
 from linkforge.agent.models import BrowserDecision
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserElementError, BrowserError
-from linkforge.browser.models import InteractiveElement
+from linkforge.browser.models import BrowserPage, InteractiveElement
 from linkforge.observation.base import Observer
 from linkforge.observation.models import Observation
 
@@ -95,6 +95,7 @@ class FakeBrowser(Browser):
         self.action_calls: list[tuple[object, ...]] = []
         self.frame_evaluation_calls: list[str] = []
         self._active_target_ids: set[int] = set()
+        self.page = BrowserPage(page_id=1, url=url)
 
     def start(self) -> None:
         pass
@@ -126,6 +127,31 @@ class FakeBrowser(Browser):
         self._raise_observation_error()
         self.frame_evaluation_calls.append(expression)
         return self.frame_evaluation_results
+
+    def current_page(self) -> BrowserPage:
+        self._raise_observation_error()
+        return BrowserPage(page_id=self.page.page_id, url=self.url)
+
+    def open_new_page_from_frame(
+        self, frame_url_contains: str, selector: str, *, timeout_ms: int
+    ) -> BrowserPage:
+        self._raise_action_error()
+        self.action_calls.append(("open_new_page_from_frame", frame_url_contains, selector, timeout_ms))
+        self.page = BrowserPage(page_id=self.page.page_id + 1, url="about:blank")
+        self.url = self.page.url
+        return self.page
+
+    def switch_page(self, page: BrowserPage) -> None:
+        self._raise_action_error()
+        self.page = page
+        self.url = page.url
+        self._active_target_ids.clear()
+        self.action_calls.append(("switch_page", page.page_id))
+
+    def close_page(self, page: BrowserPage) -> None:
+        self._raise_action_error()
+        self._active_target_ids.clear()
+        self.action_calls.append(("close_page", page.page_id))
 
     def click_target(self, target_id: int) -> None:
         self._require_target(target_id)
