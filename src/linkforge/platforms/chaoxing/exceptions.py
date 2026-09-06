@@ -25,6 +25,22 @@ class ContentNavigationError(ChaoxingTaskError):
     """The current content cannot be advanced and verified reliably."""
 
 
+class ChaoxingCommentError(ChaoxingTaskError):
+    """Base error for the supported Chaoxing comment workflow."""
+
+
+class ChaoxingCommentStateError(ChaoxingCommentError):
+    """The current discussion identity or DOM contract is ambiguous."""
+
+
+class ChaoxingCommentRecoveryError(ChaoxingCommentError):
+    """The original course page could not be restored reliably."""
+
+
+class ChaoxingCommentGenerationError(ChaoxingCommentError):
+    """A comment body could not be generated or validated."""
+
+
 class ChaoxingDocumentError(ChaoxingTaskError):
     """Base error for the deterministic Chaoxing document workflow."""
 

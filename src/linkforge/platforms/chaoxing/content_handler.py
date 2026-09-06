@@ -51,11 +51,13 @@ class ChaoxingContentTaskHandler(TaskHandler):
         self,
         browser: Browser,
         *,
+        detector: ChaoxingTaskDetector | None = None,
         config: ChaoxingContentHandlerConfig | None = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._browser = browser
+        self._detector = detector or ChaoxingTaskDetector(browser)
         self._config = config or ChaoxingContentHandlerConfig()
         self._sleep = sleep
         self._monotonic = monotonic
@@ -118,13 +120,11 @@ class ChaoxingContentTaskHandler(TaskHandler):
         marker are considered handled only after their real viewer reaches
         the bottom.
         """
-        detector = ChaoxingTaskDetector(self._browser)
-
         deadline = self._monotonic() + self._config.navigation_timeout_seconds
 
         while self._monotonic() < deadline:
             try:
-                task_type = detector.detect()
+                task_type = self._detector.detect()
 
             except ChaoxingInspectionError:
                 task_type = TaskType.UNKNOWN
@@ -173,6 +173,8 @@ class ChaoxingContentTaskHandler(TaskHandler):
             if (
                 current_state is not None
                 and current_state.active_tab_index != initial_state.active_tab_index
+                and current_state.knowledge_id == initial_state.knowledge_id
+                and current_state.content_frame_url != initial_state.content_frame_url
             ):
                 return
 

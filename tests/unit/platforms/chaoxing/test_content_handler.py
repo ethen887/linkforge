@@ -217,6 +217,23 @@ def test_content_clicks_next_card_without_inspecting_knowledge_tree() -> None:
     assert browser.tree_calls == []
 
 
+def test_next_card_waits_until_old_content_document_route_is_replaced() -> None:
+    initial = _state(active_index=0, has_next=True)
+    browser = ScriptedContentBrowser(
+        [
+            initial,
+            initial,
+            _state(active_index=1, card_number=0),
+            _state(active_index=1, card_number=1),
+        ]
+    )
+
+    _handler(browser, FakeClock()).run()
+
+    assert browser.action_calls == [("click", "#prev_tab li.active + li")]
+    assert len(browser.frame_evaluation_calls) == 4
+
+
 def test_content_navigation_accepts_ordinary_pdf_at_viewer_bottom() -> None:
     handled_pdf_state = _state(
         active_index=0,

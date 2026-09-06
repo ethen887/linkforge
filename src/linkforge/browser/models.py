@@ -13,3 +13,11 @@ class InteractiveElement:
     target_id: int
     role: InteractiveElementRole
     name: str
+
+
+@dataclass(frozen=True, slots=True)
+class BrowserPage:
+    """Opaque reference to one page managed by a Browser instance."""
+
+    page_id: int
+    url: str
