@@ -299,10 +299,7 @@ class ChaoxingCommentTaskHandler(TaskHandler):
             if not parsed.path.endswith(_TOPIC_PATH_SUFFIX):
                 return None
 
-            query = {
-                key.lower(): values
-                for key, values in parse_qs(parsed.query).items()
-            }
+            query = {key.lower(): values for key, values in parse_qs(parsed.query).items()}
 
             course_values = query.get("courseid")
             class_values = query.get("classid")
@@ -324,21 +321,14 @@ class ChaoxingCommentTaskHandler(TaskHandler):
             matches = []
 
             for value in self._browser.evaluate_in_frames(_TOPIC_SCRIPT):
-                if (
-                    not isinstance(value, dict)
-                    or not isinstance(value.get("matched"), bool)
-                ):
-                    raise ChaoxingCommentStateError(
-                        "The topic inspection was malformed."
-                    )
+                if not isinstance(value, dict) or not isinstance(value.get("matched"), bool):
+                    raise ChaoxingCommentStateError("The topic inspection was malformed.")
 
                 if value["matched"]:
                     matches.append(value)
 
             if len(matches) > 1:
-                raise ChaoxingCommentStateError(
-                    "The topic detail is ambiguous across frames."
-                )
+                raise ChaoxingCommentStateError("The topic detail is ambiguous across frames.")
 
             if not matches:
                 return None
@@ -346,25 +336,19 @@ class ChaoxingCommentTaskHandler(TaskHandler):
             titles = matches[0].get("titles")
 
             if not isinstance(titles, list):
-                raise ChaoxingCommentStateError(
-                    "The topic title inspection was malformed."
-                )
+                raise ChaoxingCommentStateError("The topic title inspection was malformed.")
 
             if len(titles) == 0:
                 return None
 
             if len(titles) > 1:
-                raise ChaoxingCommentStateError(
-                    "The topic title is ambiguous."
-                )
+                raise ChaoxingCommentStateError("The topic title is ambiguous.")
 
             if not isinstance(titles[0], str) or not titles[0].strip():
                 return None
 
             if expected_title not in titles[0]:
-                raise ChaoxingCommentStateError(
-                    "The popup topic title does not match the course entry."
-                )
+                raise ChaoxingCommentStateError("The popup topic title does not match the course entry.")
 
             return True
 
