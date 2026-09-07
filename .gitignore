@@ -17,6 +17,9 @@ eggs/
 lib/
 lib64/
 parts/
+temp/
+*smoke*
+!src/linkforge/platforms/chaoxing/smoke_quiz.py
 sdist/
 var/
 wheels/
@@ -318,3 +321,11 @@ logs/
 Thumbs.db
 desktop.ini
 src/linkforge/platforms/chaoxing/smoke_video_content_e2e.py
+
+# Quiz runtime evidence (production screenshots stay in memory)
+quiz_recon_result*.json
+quiz_interaction_result*.json
+quiz_recon_artifacts/
+quiz_interaction_artifacts/
+quiz_smoke_result*.json
+quiz_smoke_artifacts/

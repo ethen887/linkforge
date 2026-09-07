@@ -32,6 +32,7 @@ LinkForge Playwright 浏览器实现。
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from pathlib import Path
 
 from playwright.sync_api import (
@@ -52,6 +53,7 @@ from playwright.sync_api import (
 )
 
 from .base import Browser
+from .element import BrowserElement
 from .exceptions import (
     BrowserClosedError,
     BrowserElementError,
@@ -61,6 +63,7 @@ from .exceptions import (
     BrowserTimeoutError,
 )
 from .models import BrowserPage, InteractiveElement, InteractiveElementRole
+from .playwright_element import element_scope
 
 _INTERACTIVE_ELEMENT_SELECTOR = (
     'a[href], button, input:not([type="hidden"]), textarea, '
@@ -365,6 +368,11 @@ class PlaywrightBrowser(Browser):
                 raise BrowserError("Failed to inspect page frames.") from exc
 
         return tuple(results)
+
+    def element_scope(
+        self, frame_url_contains: str, selector: str, *, ancestor_url: str
+    ) -> AbstractContextManager[tuple[BrowserElement, ...]]:
+        return element_scope(self._require_page(), frame_url_contains, selector, ancestor_url=ancestor_url)
 
     def current_page(self) -> BrowserPage:
         """Return the provider-neutral identity of the selected page."""

@@ -41,3 +41,9 @@ class TestCreateModelClient:
         with pytest.raises(NotImplementedError) as exc_info:
             create_model_client(config)
         assert "not supported" in str(exc_info.value)
+
+    def test_anthropic_compatible_endpoint_is_preserved(self):
+        client = create_model_client(
+            ModelConfig("test", "https://example.test/anthropic", "vision", "anthropic")
+        )
+        assert str(client.client.base_url) == "https://example.test/anthropic/"

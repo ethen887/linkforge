@@ -9,9 +9,12 @@ Observation、Action 和 Agent Loop 等上层逻辑不属于本模块职责。
 """
 
 from abc import ABC, abstractmethod
+from contextlib import AbstractContextManager
 from types import TracebackType
 from typing import Literal, Self
 
+from linkforge.browser.element import BrowserElement
+from linkforge.browser.exceptions import BrowserError
 from linkforge.browser.models import BrowserPage, InteractiveElement
 
 
@@ -34,6 +37,17 @@ class Browser(ABC):
 
     实现类应保证资源能够在正常退出和异常退出时被可靠释放。
     """
+
+    def element_scope(
+        self, frame_url_contains: str, selector: str, *, ancestor_url: str
+    ) -> AbstractContextManager[tuple[BrowserElement, ...]]:
+        """Capture nodes in exactly one descendant frame of an exact ancestor URL.
+
+        Require one ancestor and one matching descendant frame; an empty element
+        result is allowed. References are released on context exit. Optional
+        capability so existing text-only Browser implementations remain compatible.
+        """
+        raise BrowserError("This browser does not support scoped DOM elements.")
 
     def __enter__(self) -> Self:
         """
