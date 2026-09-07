@@ -369,7 +369,7 @@ class SmokeError(RuntimeError):
     """Known failure in this destructive E2E smoke."""
 
 
-class SmokeForcedCommentDetector:
+class SmokeForcedCommentDetector(ChaoxingTaskDetector):
     """Smoke-only adapter for re-testing the fixed Card-5 discussion.
 
     The production detector stays authoritative everywhere except the fixed
