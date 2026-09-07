@@ -35,6 +35,19 @@ class OpenAIInterface(LLM):
         """Convert a LinkForge message to OpenAI message format."""
         role = message.role
 
+        if message.images:
+            content: list[dict[str, Any]] = []
+            if message.content:
+                content.append({"type": "text", "text": message.content})
+            content.extend(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{image.media_type};base64,{image.base64_data()}"},
+                }
+                for image in message.images
+            )
+            return {"role": role, "content": content}
+
         if role in ("system", "user"):
             return {
                 "role": role,
@@ -77,7 +90,7 @@ class OpenAIInterface(LLM):
         messages_t = self.client.chat.completions.create(
             model=model,
             messages=cast(Any, openai_messages),
-            tools=cast(Any, tools),
+            **({"tools": cast(Any, tools)} if tools else {}),
         )
 
         response = messages_t.choices[0].message

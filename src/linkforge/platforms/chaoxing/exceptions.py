@@ -5,6 +5,34 @@ class ChaoxingTaskError(RuntimeError):
     """Base class for Chaoxing task handling failures."""
 
 
+class ChaoxingQuizError(ChaoxingTaskError):
+    """Base error for the screenshot-based quiz workflow."""
+
+
+class ChaoxingQuizStateError(ChaoxingQuizError):
+    """Quiz frames, question structure, or selection state are not reliable."""
+
+
+class ChaoxingQuizCaptureError(ChaoxingQuizError):
+    """The complete question could not be captured as an image."""
+
+
+class ChaoxingQuizAnswerError(ChaoxingQuizError):
+    """Question type or model answer is unsupported, inconsistent, or invalid."""
+
+
+class ChaoxingQuizSolverError(ChaoxingQuizError):
+    """The vision model request failed."""
+
+
+class ChaoxingQuizSubmissionError(ChaoxingQuizError):
+    """Normal UI submission failed or its lifecycle has not been verified."""
+
+
+class ChaoxingQuizCompletionError(ChaoxingQuizError):
+    """Platform completion could not be independently verified."""
+
+
 class ChaoxingInspectionError(ChaoxingTaskError):
     """The current Chaoxing DOM state cannot be read unambiguously."""
 

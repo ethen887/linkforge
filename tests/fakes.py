@@ -1,10 +1,14 @@
 """Test doubles for external LinkForge interfaces."""
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+
 from linkforge.action.base import ActionExecutor
 from linkforge.action.models import Action
 from linkforge.agent.browser import BrowserAgent
 from linkforge.agent.models import BrowserDecision
 from linkforge.browser.base import Browser
+from linkforge.browser.element import BrowserElement
 from linkforge.browser.exceptions import BrowserElementError, BrowserError
 from linkforge.browser.models import BrowserPage, InteractiveElement
 from linkforge.observation.base import Observer
@@ -96,6 +100,22 @@ class FakeBrowser(Browser):
         self.frame_evaluation_calls: list[str] = []
         self._active_target_ids: set[int] = set()
         self.page = BrowserPage(page_id=1, url=url)
+        self.scoped_elements: tuple[BrowserElement, ...] = ()
+        self.scope_error: BrowserError | None = None
+        self.scope_closed = True
+
+    @contextmanager
+    def element_scope(
+        self, frame_url_contains: str, selector: str, *, ancestor_url: str
+    ) -> Iterator[tuple[BrowserElement, ...]]:
+        self.action_calls.append(("element_scope", frame_url_contains, selector, ancestor_url))
+        if self.scope_error:
+            raise self.scope_error
+        self.scope_closed = False
+        try:
+            yield self.scoped_elements
+        finally:
+            self.scope_closed = True
 
     def start(self) -> None:
         pass
@@ -198,3 +218,42 @@ class FakeBrowser(Browser):
     def _require_target(self, target_id: int) -> None:
         if target_id not in self._active_target_ids:
             raise BrowserElementError(f"Unknown or stale target_id: {target_id}")
+
+
+class FakeDOMElement:
+    """Scriptable element with observable capture/click events."""
+
+    def __init__(
+        self,
+        *,
+        inspect: Callable[[], object],
+        children: tuple[BrowserElement, ...] = (),
+        on_click: Callable[[], None] = lambda: None,
+        events: list[str] | None = None,
+        name: str = "question",
+    ) -> None:
+        self.inspect = inspect
+        self.children = children
+        self.on_click = on_click
+        self.events = events if events is not None else []
+        self.name = name
+        self.screenshot_error: BrowserError | None = None
+        self.click_error: BrowserError | None = None
+
+    def query_all(self, selector: str) -> tuple[BrowserElement, ...]:
+        return self.children
+
+    def evaluate(self, expression: str) -> object:
+        return self.inspect()
+
+    def screenshot(self) -> bytes:
+        self.events.append(f"capture:{self.name}")
+        if self.screenshot_error:
+            raise self.screenshot_error
+        return b"test-png"
+
+    def click(self) -> None:
+        self.events.append(f"click:{self.name}")
+        if self.click_error:
+            raise self.click_error
+        self.on_click()

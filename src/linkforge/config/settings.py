@@ -84,6 +84,12 @@ MODEL_PROVIDERS: dict[str, dict[str, Any]] = {
         "protocol": "openai",
         "default_model": "deepseek-chat",
     },
+    "gemini": {
+        "display_name": "Google Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "protocol": "openai",
+        "default_model": "gemini-3.8-flash",
+    },
     "openai": {
         "display_name": "OpenAI",
         "base_url": "https://api.openai.com/v1",

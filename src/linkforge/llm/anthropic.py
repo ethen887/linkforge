@@ -7,8 +7,8 @@ from linkforge.llm.base import LLM, LLMMessage, LLMResponse, ToolCall
 
 
 class AnthropicInterface(LLM):
-    def __init__(self, api_key: str):
-        self.client = Anthropic(api_key=api_key)
+    def __init__(self, api_key: str, base_url: str | None = None):
+        self.client = Anthropic(api_key=api_key, base_url=base_url)
 
     def _convert_tool_calls(self, tool_calls: tuple[ToolCall, ...]) -> list[dict[str, Any]]:
         """Convert LinkForge tool calls to Anthropic tool-use blocks."""
@@ -69,6 +69,22 @@ class AnthropicInterface(LLM):
             return None
 
         if role == "user":
+            if message.images:
+                blocks: list[dict[str, Any]] = []
+                if message.content:
+                    blocks.append({"type": "text", "text": message.content})
+                blocks.extend(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": image.media_type,
+                            "data": image.base64_data(),
+                        },
+                    }
+                    for image in message.images
+                )
+                return {"role": "user", "content": blocks}
             return {
                 "role": "user",
                 "content": message.content or "",
