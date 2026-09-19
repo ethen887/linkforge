@@ -49,14 +49,17 @@ class BrowserConfig:
             False 时显示浏览器窗口，适合本地开发与调试。
         timeout_ms:
             Browser 页面操作和导航的默认超时时间，单位为毫秒。
+        profile_dir:
+            可选的 Chromium user-data 目录。指定后可复用浏览器登录态。
 
     Raises:
         ValueError:
-            timeout_ms 小于等于 0 时抛出。
+            timeout_ms 小于等于 0，或 profile_dir 为空白字符串时抛出。
     """
 
     headless: bool = False
     timeout_ms: int = 15_000
+    profile_dir: str | None = None
 
     def __post_init__(self) -> None:
         """
@@ -64,10 +67,12 @@ class BrowserConfig:
 
         Raises:
             ValueError:
-                timeout_ms 必须大于 0。
+                timeout_ms 必须大于 0，且 profile_dir 不能是空白字符串。
         """
         if self.timeout_ms <= 0:
             raise ValueError("timeout_ms must be greater than 0")
+        if self.profile_dir is not None and not self.profile_dir.strip():
+            raise ValueError("profile_dir must not be empty")
 
 
 # Built-in model provider configurations.
