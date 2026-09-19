@@ -45,16 +45,19 @@ class TestBrowserConfig:
 
         assert cfg.headless is False
         assert cfg.timeout_ms == 15_000
+        assert cfg.profile_dir is None
 
     def test_explicit_values(self):
         """BrowserConfig should allow browser runtime values to be overridden."""
         cfg = BrowserConfig(
             headless=True,
             timeout_ms=5_000,
+            profile_dir="browser-profile",
         )
 
         assert cfg.headless is True
         assert cfg.timeout_ms == 5_000
+        assert cfg.profile_dir == "browser-profile"
 
     @pytest.mark.parametrize("timeout_ms", [0, -1, -10_000])
     def test_non_positive_timeout_raises(self, timeout_ms):
@@ -64,6 +67,12 @@ class TestBrowserConfig:
             match="timeout_ms must be greater than 0",
         ):
             BrowserConfig(timeout_ms=timeout_ms)
+
+    @pytest.mark.parametrize("profile_dir", ["", " ", "\t"])
+    def test_empty_profile_dir_raises(self, profile_dir: str):
+        """BrowserConfig should reject empty persistent-profile paths."""
+        with pytest.raises(ValueError, match="profile_dir must not be empty"):
+            BrowserConfig(profile_dir=profile_dir)
 
 
 class TestModelProviders:
