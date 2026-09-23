@@ -57,29 +57,16 @@ def test_main_composes_and_runs_application_without_starting_real_resources(
     monkeypatch.setenv("LINKFORGE_PROFILE_DIR", " D:/profiles/linkforge ")
 
     captured: dict[str, Any] = {}
-    submitter = object()
-    platform = object()
-
-    def create_platform(*, quiz_submitter: object) -> object:
-        captured["quiz_submitter"] = quiz_submitter
-        return platform
 
     class FakeApplication:
-        def __init__(
-            self,
-            *,
-            config: ApplicationConfig,
-            platform: object,
-        ) -> None:
-            captured["config"] = config
-            captured["platform"] = platform
-
         def run(self) -> None:
             captured["run_called"] = True
 
-    monkeypatch.setattr(main_module, "ChaoxingQuizSubmitter", lambda: submitter)
-    monkeypatch.setattr(main_module, "ChaoxingPlatformRuntime", create_platform)
-    monkeypatch.setattr(main_module, "LinkForgeApplication", FakeApplication)
+    def create_app(config: ApplicationConfig) -> FakeApplication:
+        captured["config"] = config
+        return FakeApplication()
+
+    monkeypatch.setattr(main_module, "create_application", create_app)
 
     main_module.main()
 
@@ -93,8 +80,6 @@ def test_main_composes_and_runs_application_without_starting_real_resources(
     assert config.model_config.model_name == "qwen-plus"
     assert config.model_config.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
     assert config.model_config.protocol == "openai"
-    assert captured["quiz_submitter"] is submitter
-    assert captured["platform"] is platform
     assert captured["run_called"] is True
 
     output = capsys.readouterr().out
@@ -121,7 +106,7 @@ def test_main_logging_never_writes_api_key(
         def run(self) -> None:
             pass
 
-    monkeypatch.setattr(main_module, "LinkForgeApplication", FakeApplication)
+    monkeypatch.setattr(main_module, "create_application", lambda _config: FakeApplication())
     main_module.main()
 
     for handler in logging.getLogger("linkforge").handlers:
