@@ -9,6 +9,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+browser_date/
 develop-eggs/
 dist/
 downloads/

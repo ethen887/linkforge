@@ -5,11 +5,10 @@ from __future__ import annotations
 import logging
 import os
 
-from linkforge.application import ApplicationConfig, LinkForgeApplication
+from linkforge.application import ApplicationConfig
+from linkforge.composition import create_application
 from linkforge.config import BrowserConfig, create_model_config
 from linkforge.log import setup_logging
-from linkforge.platforms.chaoxing.quiz_submitter import ChaoxingQuizSubmitter
-from linkforge.platforms.chaoxing.runtime import ChaoxingPlatformRuntime
 
 _COURSE_URL_ENV = "LINKFORGE_COURSE_URL"
 _PROVIDER_ENV = "LINKFORGE_PROVIDER"
@@ -56,16 +55,10 @@ def main() -> None:
             browser_config=browser_config,
             model_config=model_config,
         )
-        platform = ChaoxingPlatformRuntime(
-            quiz_submitter=ChaoxingQuizSubmitter(),
-        )
-        app = LinkForgeApplication(
-            config=config,
-            platform=platform,
-        )
+        app = create_application(config)
 
         print("LinkForge starting...")
-        print(f"Course: {course_url}")
+        print("Course URL configured.")
         print(f"Provider: {provider}")
         print(f"Model: {model}")
 
