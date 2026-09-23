@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 import linkforge.main as main_module
 from linkforge.application import ApplicationConfig
+from linkforge.log import setup_logging
 
 _REQUIRED_ENV = {
     "LINKFORGE_COURSE_URL": "https://example.test/course",
@@ -15,6 +19,17 @@ _REQUIRED_ENV = {
     "LINKFORGE_MODEL": "qwen-plus",
     "LINKFORGE_API_KEY": "test-secret-key",
 }
+
+
+@pytest.fixture(autouse=True)
+def avoid_writing_default_logs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+    monkeypatch.setattr(main_module, "setup_logging", lambda: tmp_path / "unused.log")
+    yield
+    logger = logging.getLogger("linkforge")
+    for handler in tuple(logger.handlers):
+        if handler.get_name() == "linkforge.file":
+            logger.removeHandler(handler)
+            handler.close()
 
 
 @pytest.mark.parametrize("missing_name", tuple(_REQUIRED_ENV))
@@ -87,3 +102,29 @@ def test_main_composes_and_runs_application_without_starting_real_resources(
     assert "Provider: qwen" in output
     assert "Model: qwen-plus" in output
     assert "test-secret-key" not in output
+
+
+def test_main_logging_never_writes_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    for name, value in _REQUIRED_ENV.items():
+        monkeypatch.setenv(name, value)
+
+    log_dir = tmp_path / "logs"
+    monkeypatch.setattr(main_module, "setup_logging", lambda: setup_logging(log_dir=log_dir))
+
+    class FakeApplication:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def run(self) -> None:
+            pass
+
+    monkeypatch.setattr(main_module, "LinkForgeApplication", FakeApplication)
+    main_module.main()
+
+    for handler in logging.getLogger("linkforge").handlers:
+        handler.flush()
+    content = next(log_dir.glob("*.log")).read_text(encoding="utf-8")
+    assert _REQUIRED_ENV["LINKFORGE_API_KEY"] not in content

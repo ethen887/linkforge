@@ -1,5 +1,6 @@
 """Platform-neutral application lifecycle orchestration."""
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
@@ -13,6 +14,8 @@ from linkforge.llm.factory import create_model_client
 
 BrowserFactory = Callable[[BrowserConfig], Browser]
 LLMFactory = Callable[[ModelConfig], LLM]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,21 +58,32 @@ class LinkForgeApplication:
 
     def run(self) -> None:
         """Run until platform completion, a task-boundary stop, or an error."""
-        browser = self._browser_factory(self._config.browser_config)
-        llm = self._llm_factory(self._config.model_config)
+        logger.info("Application run started")
+        try:
+            browser = self._browser_factory(self._config.browser_config)
+            llm = self._llm_factory(self._config.model_config)
 
-        with browser:
-            browser.open(self._config.course_url)
-            runner = self._platform.build_runner(
-                browser=browser,
-                llm=llm,
-                model=self._config.model_config.model_name,
-            )
-            runner.run(should_stop=self._should_stop)
+            with browser:
+                logger.info("Browser started")
+                browser.open(self._config.course_url)
+                logger.debug("Course page opened")
+                runner = self._platform.build_runner(
+                    browser=browser,
+                    llm=llm,
+                    model=self._config.model_config.model_name,
+                )
+                runner.run(should_stop=self._should_stop)
+                logger.info("Platform runtime completed")
+        except BaseException:
+            logger.exception("Application runtime failed")
+            raise
+        finally:
+            logger.info("Application cleanup finished")
 
     def stop(self) -> None:
         """Request a stop at the next TaskRunner task boundary."""
         self._stop_requested = True
+        logger.info("Application stop requested")
 
     def _should_stop(self) -> bool:
         return self._stop_requested

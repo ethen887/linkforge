@@ -137,6 +137,16 @@ class ChaoxingCommentTaskHandler(TaskHandler):
         self.last_record: CommentRecord | None = None
 
     def run(self) -> None:
+        """Attempt one discussion submission and restore the course page."""
+        _LOGGER.info("Comment handler started")
+        try:
+            self._run()
+        except BaseException:
+            _LOGGER.exception("Comment handler failed")
+            raise
+        _LOGGER.info("Comment handler completed")
+
+    def _run(self) -> None:
         target = self._current_target()
         if self._session.is_handled(target.identity):
             self.last_record = self._session.get(target.identity)

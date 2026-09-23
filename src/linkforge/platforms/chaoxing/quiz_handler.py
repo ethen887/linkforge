@@ -1,5 +1,6 @@
 """Production quiz answering with an explicit, fail-closed submission boundary."""
 
+import logging
 import time
 from collections.abc import Callable
 from contextlib import ExitStack
@@ -28,6 +29,8 @@ from linkforge.platforms.chaoxing.quiz_dom import (
 from linkforge.platforms.chaoxing.quiz_models import QuizAnswer, validate_answer
 from linkforge.platforms.chaoxing.quiz_solver import QuizSolver
 from linkforge.platforms.chaoxing.task_detector import ChaoxingTaskDetector
+
+logger = logging.getLogger(__name__)
 
 
 class QuizSubmitter(Protocol):
@@ -169,6 +172,16 @@ class ChaoxingQuizTaskHandler(TaskHandler):
             raise ChaoxingQuizStateError("Quiz DOM operation failed.") from exc
 
     def run(self) -> None:
+        """Answer and submit one quiz, then verify platform completion."""
+        logger.info("Quiz handler started")
+        try:
+            self._run()
+        except BaseException:
+            logger.exception("Quiz handler failed")
+            raise
+        logger.info("Quiz handler completed")
+
+    def _run(self) -> None:
         content_url, module_url = self._answer_all()
         if self._submitter is None:
             raise ChaoxingQuizSubmissionError(
