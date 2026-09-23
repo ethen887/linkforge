@@ -40,6 +40,24 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      # 安装 PySide6 / Qt 在 Linux CI 中需要的系统运行库
+      - name: Install Qt system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0
+
       # 检查代码格式
       - name: Check formatting
         run: uv run ruff format --check .
@@ -57,5 +75,8 @@ jobs:
         run: uv run playwright install --with-deps chromium
 
       # 自动化测试
+      # GitHub Actions 没有真实显示器，因此 Qt 使用 offscreen 平台运行 GUI 单元测试
       - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: uv run pytest
