@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 
@@ -30,6 +31,8 @@ from linkforge.platforms.chaoxing.models import ChaoxingDocumentModuleState
 
 _PDF_MODULE_PATH = "/ananas/modules/pdf/"
 _MIN_PROGRESS_PX = 0.5
+
+logger = logging.getLogger(__name__)
 
 
 class ChaoxingDocumentTaskHandler(TaskHandler):
@@ -69,6 +72,15 @@ class ChaoxingDocumentTaskHandler(TaskHandler):
 
     def run(self) -> None:
         """Scroll exactly one PDF from its current position until ``at_bottom``."""
+        logger.info("Document handler started")
+        try:
+            self._run()
+        except BaseException:
+            logger.exception("Document handler failed")
+            raise
+        logger.info("Document handler completed")
+
+    def _run(self) -> None:
         started_at = self._clock()
         deadline = started_at + self._timeout_seconds
         inspection = self._inspect()

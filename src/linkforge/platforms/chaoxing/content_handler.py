@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from linkforge.platforms.chaoxing.task_detector import ChaoxingTaskDetector
 _NEXT_CARD_SELECTOR = "#prev_tab li.active + li"
 _KNOWLEDGE_NODE_SELECTOR = '.posCatalog_select[id^="cur"]'
 _KNOWLEDGE_TARGET_SELECTOR = ".posCatalog_name"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +66,16 @@ class ChaoxingContentTaskHandler(TaskHandler):
         self._monotonic = monotonic
 
     def run(self) -> None:
+        """Navigate one CONTENT step and return control to TaskRunner."""
+        logger.info("Content handler started")
+        try:
+            self._run()
+        except BaseException:
+            logger.exception("Content handler failed")
+            raise
+        logger.info("Content handler completed")
+
+    def _run(self) -> None:
         """
         Navigate one CONTENT step and return control to TaskRunner.
 

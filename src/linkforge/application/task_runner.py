@@ -1,9 +1,12 @@
 """Course-task detection and dispatch lifecycle."""
 
+import logging
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 
 class TaskType(Enum):
@@ -73,32 +76,56 @@ class TaskRunner:
 
     def run(self, *, should_stop: Callable[[], bool] | None = None) -> None:
         """Dispatch tasks until completion or a stop request at a task boundary."""
-        while should_stop is None or not should_stop():
+        while True:
+            if should_stop is not None and should_stop():
+                logger.info("Task runner stopped at task boundary")
+                return
             task_type = self._detect_with_bounded_unknown_retry()
+            logger.info("Detected task type: %s", task_type.name)
 
             if task_type is TaskType.COMPLETE:
+                logger.info("Task runner reached COMPLETE")
                 return
 
             if task_type is TaskType.UNKNOWN:
+                logger.error("Task detection remained UNKNOWN after bounded retries")
                 raise UnknownTaskError("Unable to determine the current course task.")
 
+            handler: TaskHandler
             if task_type is TaskType.VIDEO:
-                self._video_handler.run()
+                handler = self._video_handler
             elif task_type is TaskType.DOCUMENT:
-                self._document_handler.run()
+                handler = self._document_handler
             elif task_type is TaskType.CONTENT:
-                self._content_handler.run()
+                handler = self._content_handler
             elif task_type is TaskType.COMMENT:
-                self._comment_handler.run()
-            elif task_type is TaskType.QUIZ:
-                self._quiz_handler.run()
+                handler = self._comment_handler
+            else:
+                handler = self._quiz_handler
+
+            logger.info("Dispatching task to %s handler", task_type.name)
+            try:
+                handler.run()
+            except BaseException:
+                logger.error("%s handler failure propagated to task runner", task_type.name)
+                raise
 
     def _detect_with_bounded_unknown_retry(self) -> TaskType:
         for retry_index in range(self._unknown_retry_attempts + 1):
             task_type = self._detector.detect()
+            logger.debug(
+                "Task detection attempt %d/%d returned %s",
+                retry_index + 1,
+                self._unknown_retry_attempts + 1,
+                task_type.name,
+            )
             if task_type is not TaskType.UNKNOWN:
                 return task_type
             if retry_index < self._unknown_retry_attempts:
+                logger.warning(
+                    "Task type UNKNOWN; retrying after %.3f seconds",
+                    self._unknown_retry_interval_seconds,
+                )
                 self._sleep(self._unknown_retry_interval_seconds)
 
         return TaskType.UNKNOWN

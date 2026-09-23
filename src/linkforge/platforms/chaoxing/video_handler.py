@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -25,6 +26,8 @@ from linkforge.platforms.chaoxing.models import (
 
 _VIDEO_MODULE_PATH = "/ananas/modules/video/"
 _PROGRESS_EPSILON_SECONDS = 0.05
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +72,15 @@ class ChaoxingVideoTaskHandler(TaskHandler):
 
     def run(self) -> None:
         """Run the current video until its real task-point marker becomes finished."""
+        logger.info("Video handler started")
+        try:
+            self._run()
+        except BaseException:
+            logger.exception("Video handler failed")
+            raise
+        logger.info("Video handler completed")
+
+    def _run(self) -> None:
         initial_state = self._inspect()
         target = self._locate_target(initial_state)
         if target is None:
