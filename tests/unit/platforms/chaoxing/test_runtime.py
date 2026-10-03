@@ -10,6 +10,7 @@ from linkforge.browser.base import Browser
 from linkforge.llm.base import LLM, LLMMessage, LLMResponse
 from linkforge.platforms.chaoxing.comment_state import CommentSession
 from linkforge.platforms.chaoxing.runtime import ChaoxingPlatformRuntime
+from linkforge.platforms.chaoxing.video_state import VideoSession
 from tests.fakes import FakeBrowser
 
 
@@ -71,6 +72,7 @@ class BuildRecord:
     browser: Browser
     session: CommentSession
     detector: ScriptedDetector
+    video_session: VideoSession
     quiz_solver: object | None = None
     comment_generator: object | None = None
 
@@ -85,7 +87,9 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
     solver_calls: list[tuple[LLM, str]] = []
     generator_calls: list[tuple[LLM, str]] = []
 
-    def create_detector(received_browser: Browser, *, comment_session: CommentSession) -> ScriptedDetector:
+    def create_detector(
+        received_browser: Browser, *, comment_session: CommentSession, video_session: VideoSession
+    ) -> ScriptedDetector:
         detector = ScriptedDetector(
             [
                 TaskType.VIDEO,
@@ -96,7 +100,7 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
                 TaskType.COMPLETE,
             ]
         )
-        records.append(BuildRecord(received_browser, comment_session, detector))
+        records.append(BuildRecord(received_browser, comment_session, detector, video_session))
         return detector
 
     def create_quiz_solver(*, llm: LLM, model: str) -> object:
@@ -120,8 +124,11 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
             submitter: object | None = None,
             comment_session: object | None = None,
             body_generator: object | None = None,
+            video_session: VideoSession | None = None,
         ) -> RecordingHandler:
-            if name in {"video", "document"}:
+            if name == "video":
+                dependency = video_session
+            elif name == "document":
                 dependency = None
             elif name == "content":
                 dependency = detector
@@ -151,6 +158,7 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
     assert isinstance(second_runner, TaskRunner)
     assert len(records) == 2
     assert records[0].session is not records[1].session
+    assert records[0].video_session is not records[1].video_session
     assert all(record.browser is browser for record in records)
     assert solver_calls == [(llm, "vision-model"), (llm, "vision-model")]
     assert generator_calls == [(llm, "vision-model"), (llm, "vision-model")]
@@ -164,6 +172,8 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
         "comment",
     ]
     assert all(received_browser is browser for _, received_browser, _, _ in first_dependencies)
+    assert first_dependencies[0][2] is records[0].video_session
+    assert handler_dependencies[5][2] is records[1].video_session
     assert first_dependencies[2][2] is records[0].detector
     assert first_dependencies[3][2] == (
         records[0].detector,

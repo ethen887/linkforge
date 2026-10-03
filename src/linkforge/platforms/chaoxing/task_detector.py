@@ -1,5 +1,7 @@
 """Deterministic task detection for Chaoxing course cards."""
 
+from urllib.parse import urljoin
+
 from linkforge.application.task_runner import TaskDetector, TaskType
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserError
@@ -17,6 +19,7 @@ from linkforge.platforms.chaoxing.document_inspection import (
 from linkforge.platforms.chaoxing.dom import CHAOXING_CARD_STATE_SCRIPT, inspect_chaoxing_page
 from linkforge.platforms.chaoxing.exceptions import ChaoxingInspectionError
 from linkforge.platforms.chaoxing.models import ChaoxingDocumentModuleState
+from linkforge.platforms.chaoxing.video_state import VideoSession
 
 _PDF_MODULE_PATH = "/ananas/modules/pdf/"
 
@@ -31,9 +34,16 @@ _MODULE_TASK_TYPES = {
 class ChaoxingTaskDetector(TaskDetector):
     """Detect the first pending module in the current Chaoxing content frame."""
 
-    def __init__(self, browser: Browser, *, comment_session: CommentSession | None = None) -> None:
+    def __init__(
+        self,
+        browser: Browser,
+        *,
+        comment_session: CommentSession | None = None,
+        video_session: VideoSession | None = None,
+    ) -> None:
         self._browser = browser
         self._comment_session = comment_session
+        self._video_session = video_session
 
     def detect(self) -> TaskType:
         """Return a deterministic task type from the current Chaoxing card."""
@@ -80,6 +90,16 @@ class ChaoxingTaskDetector(TaskDetector):
                 # finished marker.
                 if has_job_icon and finished:
                     continue
+
+                if "/ananas/modules/video/" in module_url and self._video_session is not None:
+                    state = inspect_chaoxing_page(self._browser)
+                    if module_index >= len(state.modules):
+                        return TaskType.UNKNOWN
+                    # The card may change between the two frame observations.
+                    if state.modules[module_index].url != urljoin(state.content_frame_url, module_url):
+                        return TaskType.UNKNOWN
+                    if self._video_session.is_handled(state, module_index):
+                        continue
 
                 if COMMENT_MODULE_PATH in module_url and self._comment_session is not None:
                     state = inspect_chaoxing_page(self._browser)

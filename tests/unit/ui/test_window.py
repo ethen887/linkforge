@@ -123,6 +123,27 @@ def test_gui_log_shows_only_translated_user_messages(qt_application: QApplicatio
     qt_application.processEvents()
 
 
+def test_gui_shows_manual_login_wait_and_course_readiness(qt_application: QApplication) -> None:
+    window = MainWindow(error_presenter=lambda *_args: None)
+    startup_logger = logging.getLogger("linkforge.platforms.chaoxing.startup")
+    previous_level = startup_logger.level
+    try:
+        startup_logger.setLevel(logging.INFO)
+        window._set_state(RuntimeState.RUNNING, "LinkForge 正在运行")
+        startup_logger.info("Chaoxing manual login required")
+        qt_application.processEvents()
+        assert "请在浏览器中完成学习通登录" in window.log_edit.toPlainText()
+        assert "等待登录" in window.statusBar().currentMessage()
+        startup_logger.info("Chaoxing course page ready")
+        qt_application.processEvents()
+        assert "课程页面已就绪，开始课程任务" in window.log_edit.toPlainText()
+        assert window.statusBar().currentMessage() == "LinkForge 正在运行"
+    finally:
+        startup_logger.setLevel(previous_level)
+        window.close()
+        qt_application.processEvents()
+
+
 def test_runtime_runs_off_main_thread_and_can_run_again(
     qt_application: QApplication,
 ) -> None:

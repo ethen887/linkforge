@@ -32,7 +32,11 @@ class ApplicationConfig:
 
 
 class PlatformRuntime(Protocol):
-    """Build a platform-specific task runner from application-owned resources."""
+    """Prepare course readiness and build tasks from application-owned resources."""
+
+    def prepare(self, *, browser: Browser, course_url: str, should_stop: Callable[[], bool]) -> bool:
+        """Wait for platform startup readiness; return False when stopped."""
+        ...
 
     def build_runner(self, *, browser: Browser, llm: LLM, model: str) -> TaskRunner:
         """Create the complete task runner for one platform run."""
@@ -67,6 +71,13 @@ class LinkForgeApplication:
                 logger.info("Browser started")
                 browser.open(self._config.course_url)
                 logger.debug("Course page opened")
+                if not self._platform.prepare(
+                    browser=browser,
+                    course_url=self._config.course_url,
+                    should_stop=self._should_stop,
+                ):
+                    logger.info("Application stopped during platform preparation")
+                    return
                 runner = self._platform.build_runner(
                     browser=browser,
                     llm=llm,
@@ -81,7 +92,7 @@ class LinkForgeApplication:
             logger.info("Application cleanup finished")
 
     def stop(self) -> None:
-        """Request a stop at the next TaskRunner task boundary."""
+        """Request a stop during preparation or at the next task boundary."""
         self._stop_requested = True
         logger.info("Application stop requested")
 

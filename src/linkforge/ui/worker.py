@@ -124,6 +124,15 @@ def _safe_error_summary(exc: BaseException, api_key: str) -> str:
 
 def _user_message(record: logging.LogRecord) -> str | None:
     message = record.getMessage()
+    if record.name == "linkforge.platforms.chaoxing.startup":
+        return {
+            "Chaoxing manual login required": "等待登录：请在浏览器中完成学习通登录，进入课程后将自动继续",
+            "Waiting for Chaoxing course page": "正在等待课程页面加载",
+            "Returning to requested Chaoxing course after login": "登录页面已退出，正在返回课程页面",
+            "Chaoxing course page ready": "课程页面已就绪，开始课程任务",
+            "Chaoxing startup wait stopped": "已停止登录等待",
+            "Chaoxing startup readiness timed out": "登录或课程页面加载超时，请检查浏览器页面后重试",
+        }.get(message)
     if record.name == "linkforge.application.runtime":
         return {
             "Application run started": "开始执行课程任务",

@@ -370,6 +370,11 @@ class MainWindow(QMainWindow):
         self.status_label.setStyleSheet(f"color: {color}; font-weight: 600;")
 
     def _append_log(self, message: str) -> None:
+        if self._state is RuntimeState.RUNNING:
+            if message.startswith("等待登录："):
+                self.statusBar().showMessage("等待登录：请在浏览器中完成学习通登录。")
+            elif message == "课程页面已就绪，开始课程任务":
+                self.statusBar().showMessage("LinkForge 正在运行")
         timestamp = QTime.currentTime().toString("HH:mm:ss")
         self.log_edit.append(f"{timestamp}  {message}")
         scrollbar = self.log_edit.verticalScrollBar()
