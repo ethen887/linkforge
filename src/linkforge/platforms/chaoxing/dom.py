@@ -16,7 +16,30 @@ from linkforge.platforms.chaoxing.models import (
     ChaoxingVideoState,
 )
 
-CHAOXING_STATE_SCRIPT = """() => {
+FRAME_PATH_SCRIPT = """
+    const framePath = [];
+    let currentWindow = window;
+    while (currentWindow !== currentWindow.top) {
+        const parentWindow = currentWindow.parent;
+        let childIndex = -1;
+        for (let index = 0; index < parentWindow.length; index++) {
+            if (parentWindow[index] === currentWindow) {
+                childIndex = index;
+                break;
+            }
+        }
+        if (childIndex < 0) {
+            throw new Error("Frame detached while computing its path");
+        }
+        framePath.unshift(childIndex);
+        currentWindow = parentWindow;
+    }
+"""
+
+CHAOXING_STATE_SCRIPT = (
+    """() => {"""
+    + FRAME_PATH_SCRIPT
+    + """
     const frameUrl = window.location.href;
     const activeTabs = Array.from(document.querySelectorAll("#prev_tab li.active"));
     let activeTabIndex = null;
@@ -38,6 +61,13 @@ CHAOXING_STATE_SCRIPT = """() => {
         );
 
         for (const moduleFrame of moduleFrames) {
+            let childIndex = -1;
+            for (let index = 0; index < window.length; index++) {
+                if (window[index] === moduleFrame.contentWindow) {
+                    childIndex = index;
+                    break;
+                }
+            }
             const container = moduleFrame.closest(".ans-attach-ct");
             const hasJobIcon = container
                 ? container.querySelector(".ans-job-icon") !== null
@@ -47,6 +77,7 @@ CHAOXING_STATE_SCRIPT = """() => {
                 module_url:
                     moduleFrame.src || moduleFrame.getAttribute("src"),
                 has_job_icon: hasJobIcon,
+                frame_path: childIndex < 0 ? null : [...framePath, childIndex],
                 finished:
                     hasJobIcon
                     && container.classList.contains("ans-job-finished"),
@@ -80,6 +111,7 @@ CHAOXING_STATE_SCRIPT = """() => {
 
     return {
         frame_url: frameUrl,
+        frame_path: framePath,
         active_tab_count: activeTabs.length,
         active_tab_index: activeTabIndex,
         has_next_tab: hasNextTab,
@@ -88,6 +120,7 @@ CHAOXING_STATE_SCRIPT = """() => {
         video,
     };
 }"""
+)
 
 
 CHAOXING_CARD_STATE_SCRIPT = r"""() => {
@@ -509,6 +542,7 @@ def _parse_modules(
                 url=module_url,
                 has_job_icon=has_job_icon,
                 finished=finished,
+                frame_path=_parse_frame_path(item.get("frame_path")),
             )
         )
 
@@ -572,7 +606,16 @@ def _parse_video(
         current_time=float(current_time),
         duration=(float(duration) if duration is not None else None),
         ready_state=ready_state,
+        frame_path=_parse_frame_path(result.get("frame_path")),
     )
+
+
+def _parse_frame_path(value: object) -> tuple[int, ...] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list) or not all(_is_non_negative_int(index) for index in value):
+        raise ChaoxingInspectionError("Chaoxing frame path is malformed.")
+    return tuple(value)
 
 
 def _is_non_negative_int(

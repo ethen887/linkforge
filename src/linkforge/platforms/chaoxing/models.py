@@ -24,6 +24,7 @@ class ChaoxingModuleState:
     url: str
     has_job_icon: bool
     finished: bool
+    frame_path: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +37,7 @@ class ChaoxingVideoState:
     current_time: float
     duration: float | None
     ready_state: int
+    frame_path: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)

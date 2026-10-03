@@ -1,4 +1,4 @@
-"""Deterministic lifecycle for one pending Chaoxing video task point."""
+"""Deterministic lifecycle for task-point and ordinary Chaoxing videos."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from linkforge.application.task_runner import TaskHandler
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserError
-from linkforge.platforms.chaoxing.dom import first_pending_module, inspect_chaoxing_page
+from linkforge.platforms.chaoxing.dom import FRAME_PATH_SCRIPT, inspect_chaoxing_page
 from linkforge.platforms.chaoxing.exceptions import (
     ChaoxingInspectionError,
     VideoPlaybackError,
@@ -23,6 +23,7 @@ from linkforge.platforms.chaoxing.models import (
     ChaoxingPageState,
     ChaoxingVideoState,
 )
+from linkforge.platforms.chaoxing.video_state import VideoSession
 
 _VIDEO_MODULE_PATH = "/ananas/modules/video/"
 _PROGRESS_EPSILON_SECONDS = 0.05
@@ -55,23 +56,25 @@ class ChaoxingVideoHandlerConfig:
 
 
 class ChaoxingVideoTaskHandler(TaskHandler):
-    """Play one pending video and wait for Chaoxing to mark its task point finished."""
+    """Play a video and verify platform or ordinary-media completion."""
 
     def __init__(
         self,
         browser: Browser,
         *,
         config: ChaoxingVideoHandlerConfig | None = None,
+        video_session: VideoSession | None = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._browser = browser
         self._config = config or ChaoxingVideoHandlerConfig()
+        self._video_session = video_session or VideoSession()
         self._sleep = sleep
         self._monotonic = monotonic
 
     def run(self) -> None:
-        """Run the current video until its real task-point marker becomes finished."""
+        """Run the current video until its applicable completion is observed."""
         logger.info("Video handler started")
         try:
             self._run()
@@ -85,10 +88,15 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         target = self._locate_target(initial_state)
         if target is None:
             return
-        if not target.has_job_icon:
-            raise VideoTaskError(
-                "The pending Chaoxing video has no task-point marker, so completion cannot be verified."
-            )
+        logger.debug(
+            "Video target selected: module_count=%d, same_url_count=%d, frame_path=%s",
+            len(initial_state.modules),
+            sum(module.url == target.url for module in initial_state.modules),
+            target.frame_path,
+        )
+        requires_platform_completion = target.has_job_icon
+        if not requires_platform_completion:
+            logger.info("Video task marker absent; waiting for dynamic marker while observing playback")
 
         started_at = self._monotonic()
         last_progress_at = started_at
@@ -120,23 +128,29 @@ class ChaoxingVideoTaskHandler(TaskHandler):
                 continue
 
             inspection_failed_since = None
-            current_module = self._find_module(state, target.url)
+            if (
+                state.content_frame_url != initial_state.content_frame_url
+                or state.active_tab_index != initial_state.active_tab_index
+            ):
+                raise VideoTaskError("The Chaoxing card changed before video completion could be verified.")
+            current_module = self._find_module(state, target)
+            if current_module is not None and current_module.has_job_icon:
+                requires_platform_completion = True
             if current_module is not None and current_module.has_job_icon and current_module.finished:
                 return
             if current_module is None:
                 if module_missing_since is None:
                     module_missing_since = now
                 if (
-                    media_ended_since is None
-                    and now - module_missing_since >= self._config.video_available_timeout_seconds
-                ):
+                    media_ended_since is None or not requires_platform_completion
+                ) and now - module_missing_since >= self._config.video_available_timeout_seconds:
                     raise VideoTimeoutError(
                         "The target Chaoxing task-point module disappeared before completion."
                     )
             else:
                 module_missing_since = None
 
-            video = self._find_video(state, target.url)
+            video = self._find_video(state, target)
             if video is None:
                 play_attempted = False
                 play_requested_at = None
@@ -163,14 +177,25 @@ class ChaoxingVideoTaskHandler(TaskHandler):
             if video.ended:
                 if media_ended_since is None:
                     media_ended_since = now
-                if now - media_ended_since >= self._config.platform_finished_timeout_seconds:
+                if not requires_platform_completion:
+                    if (
+                        current_module is not None
+                        and now - started_at >= self._config.video_available_timeout_seconds
+                    ):
+                        module_index = state.modules.index(current_module)
+                        self._video_session.mark_handled(state, module_index)
+                        logger.info(
+                            "Ordinary video completed after real media ending and marker readiness wait"
+                        )
+                        return
+                elif now - media_ended_since >= self._config.platform_finished_timeout_seconds:
                     raise VideoTimeoutError(
                         "The media ended, but Chaoxing did not confirm the task point as finished."
                     )
             else:
                 media_ended_since = None
                 if video.paused and not play_attempted:
-                    self._request_play(target.url)
+                    self._request_play(target)
                     play_attempted = True
                     play_requested_at = now
                     last_progress_at = now
@@ -206,9 +231,16 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         except ChaoxingInspectionError as exc:
             raise VideoTaskError("Unable to inspect the current Chaoxing video task.") from exc
 
-    @staticmethod
-    def _locate_target(state: ChaoxingPageState) -> ChaoxingModuleState | None:
-        pending = first_pending_module(state)
+    def _locate_target(self, state: ChaoxingPageState) -> ChaoxingModuleState | None:
+        pending = next(
+            (
+                module
+                for index, module in enumerate(state.modules)
+                if not (module.has_job_icon and module.finished)
+                and not self._video_session.is_handled(state, index)
+            ),
+            None,
+        )
         if pending is not None and _VIDEO_MODULE_PATH in pending.url:
             return pending
 
@@ -217,7 +249,10 @@ class ChaoxingVideoTaskHandler(TaskHandler):
             for module in state.modules
             if _VIDEO_MODULE_PATH in module.url and module.has_job_icon and module.finished
         ]
-        if finished_videos:
+        if finished_videos or any(
+            _VIDEO_MODULE_PATH in module.url and self._video_session.is_handled(state, index)
+            for index, module in enumerate(state.modules)
+        ):
             # Detector and handler are separate observations; completion between them is benign.
             return None
 
@@ -226,21 +261,31 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         raise VideoTaskError("The first pending Chaoxing module is no longer the detected video.")
 
     @staticmethod
-    def _find_module(state: ChaoxingPageState, target_url: str) -> ChaoxingModuleState | None:
-        matches = [module for module in state.modules if module.url == target_url]
+    def _find_module(state: ChaoxingPageState, target: ChaoxingModuleState) -> ChaoxingModuleState | None:
+        matches = [
+            module
+            for module in state.modules
+            if module.url == target.url
+            and (target.frame_path is None or module.frame_path == target.frame_path)
+        ]
         if len(matches) > 1:
             raise VideoTaskError("The target Chaoxing video module is ambiguous.")
         return matches[0] if matches else None
 
     @staticmethod
-    def _find_video(state: ChaoxingPageState, target_url: str) -> ChaoxingVideoState | None:
-        matches = [video for video in state.videos if video.frame_url == target_url]
+    def _find_video(state: ChaoxingPageState, target: ChaoxingModuleState) -> ChaoxingVideoState | None:
+        matches = [
+            video
+            for video in state.videos
+            if video.frame_url == target.url
+            and (target.frame_path is None or video.frame_path == target.frame_path)
+        ]
         if len(matches) > 1:
             raise VideoTaskError("The target Chaoxing video frame is ambiguous.")
         return matches[0] if matches else None
 
-    def _request_play(self, target_url: str) -> None:
-        expression = _play_video_script(target_url)
+    def _request_play(self, target: ChaoxingModuleState) -> None:
+        expression = _play_video_script(target.url, target.frame_path)
         try:
             results = self._browser.evaluate_in_frames(expression)
         except BrowserError as exc:
@@ -265,11 +310,15 @@ class ChaoxingVideoTaskHandler(TaskHandler):
             raise VideoPlaybackError("The Chaoxing playback result was malformed.")
 
 
-def _play_video_script(target_url: str) -> str:
+def _play_video_script(target_url: str, target_path: tuple[int, ...] | None = None) -> str:
     serialized_url = json.dumps(target_url)
+    serialized_path = json.dumps(target_path)
     return f"""() => {{
+        {FRAME_PATH_SCRIPT}
         const frameUrl = window.location.href;
-        if (frameUrl !== {serialized_url}) {{
+        const targetPath = {serialized_path};
+        if (frameUrl !== {serialized_url}
+            || (targetPath !== null && JSON.stringify(framePath) !== JSON.stringify(targetPath))) {{
             return {{frame_url: frameUrl, matched: false}};
         }}
 

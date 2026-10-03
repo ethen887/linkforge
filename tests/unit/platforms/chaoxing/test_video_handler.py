@@ -4,17 +4,20 @@ from typing import Any
 
 import pytest
 
-from linkforge.application.task_runner import TaskHandler
+from linkforge.application.task_runner import TaskHandler, TaskType
 from linkforge.browser.exceptions import BrowserError
+from linkforge.platforms.chaoxing.dom import inspect_chaoxing_page
 from linkforge.platforms.chaoxing.exceptions import (
     VideoPlaybackError,
     VideoTaskError,
     VideoTimeoutError,
 )
+from linkforge.platforms.chaoxing.task_detector import ChaoxingTaskDetector
 from linkforge.platforms.chaoxing.video_handler import (
     ChaoxingVideoHandlerConfig,
     ChaoxingVideoTaskHandler,
 )
+from linkforge.platforms.chaoxing.video_state import VideoSession
 from tests.fakes import FakeBrowser
 
 _PAGE_URL = "https://mooc1.chaoxing.com/mycourse/studentstudy"
@@ -331,3 +334,153 @@ def test_handler_implements_platform_neutral_application_contract() -> None:
     handler = _handler(ScriptedFrameBrowser([]), FakeClock())
 
     assert isinstance(handler, TaskHandler)
+
+
+def test_ordinary_video_plays_and_is_skipped_on_subsequent_detection() -> None:
+    ended = _page_state(
+        _module(has_job_icon=False), video=_video(ended=True, paused=True, current_time=10.0)
+    )
+    browser = ScriptedFrameBrowser(
+        [
+            _page_state(_module(has_job_icon=False), video=_video(paused=True)),
+            _page_state(_module(has_job_icon=False), video=_video(paused=True)),
+            ended,
+        ]
+    )
+    clock = FakeClock()
+    session = VideoSession()
+    handler = ChaoxingVideoTaskHandler(
+        browser,
+        video_session=session,
+        config=ChaoxingVideoHandlerConfig(video_available_timeout_seconds=3.0),
+        sleep=clock.sleep,
+        monotonic=clock.monotonic,
+    )
+    detector = ChaoxingTaskDetector(browser, video_session=session)
+
+    handler.run()
+
+    assert clock.now == 3.0
+    assert detector.detect() is TaskType.CONTENT
+    assert sum("const playRequest = video.play()" in call for call in browser.frame_evaluation_calls) == 1
+    # Even replacement of the player after completion must not restart the ordinary video.
+    browser._states = [_page_state(_module(has_job_icon=False), video=_video(paused=True))]
+    browser._state_index = 0
+    assert detector.detect() is TaskType.CONTENT
+    handler.run()
+    assert sum("const playRequest = video.play()" in call for call in browser.frame_evaluation_calls) == 1
+
+
+def test_late_task_marker_requires_platform_completion_even_when_media_ended() -> None:
+    no_marker = _page_state(_module(has_job_icon=False), video=_video(ended=True, current_time=10.0))
+    marker = _page_state(_module(), video=_video(ended=True, current_time=10.0))
+    browser = ScriptedFrameBrowser([no_marker, no_marker, marker])
+    clock = FakeClock()
+
+    with pytest.raises(VideoTimeoutError, match="media ended"):
+        _handler(browser, clock).run()
+
+
+def test_task_marker_disappearance_does_not_turn_task_point_into_ordinary_video() -> None:
+    browser = ScriptedFrameBrowser(
+        [
+            _page_state(_module(), video=_video(current_time=1.0)),
+            _page_state(_module(has_job_icon=False), video=_video(ended=True, current_time=10.0)),
+        ]
+    )
+
+    with pytest.raises(VideoTimeoutError, match="media ended"):
+        _handler(browser, FakeClock()).run()
+
+
+def test_missing_ordinary_video_does_not_count_as_completed() -> None:
+    browser = ScriptedFrameBrowser([_page_state(_module(has_job_icon=False))])
+
+    with pytest.raises(VideoTimeoutError, match="did not become available"):
+        _handler(browser, FakeClock()).run()
+
+
+def test_ordinary_video_without_progress_still_times_out() -> None:
+    browser = ScriptedFrameBrowser(
+        [_page_state(_module(has_job_icon=False), video=_video(current_time=1.0))]
+    )
+
+    with pytest.raises(VideoTimeoutError, match="no playback progress"):
+        _handler(browser, FakeClock()).run()
+
+
+def test_handled_ordinary_video_does_not_hide_later_videos_or_new_task_marker() -> None:
+    browser = ScriptedFrameBrowser([])
+    session = VideoSession()
+    browser._states = [_page_state(_module(has_job_icon=False))]
+    session.mark_handled(inspect_chaoxing_page(browser), 0)
+    detector = ChaoxingTaskDetector(browser, video_session=session)
+    browser._states = [_page_state(_module(has_job_icon=False), _module(_OTHER_VIDEO_URL))]
+    assert detector.detect() is TaskType.VIDEO
+    browser._states = [_page_state(_module())]
+    assert detector.detect() is TaskType.VIDEO
+
+
+def test_ordinary_video_completion_is_scoped_to_card() -> None:
+    browser = ScriptedFrameBrowser([_page_state(_module(has_job_icon=False))])
+    session = VideoSession()
+    session.mark_handled(inspect_chaoxing_page(browser), 0)
+    other_card = _page_state(_module(has_job_icon=False))
+    assert isinstance(other_card[1], dict)
+    other_card[1]["frame_url"] = _CONTENT_URL + "&knowledgeid=other"
+    browser._states = [other_card]
+
+    assert ChaoxingTaskDetector(browser, video_session=session).detect() is TaskType.VIDEO
+
+
+def _duplicate_video_state(*, first_finished: bool, second_finished: bool) -> tuple[object, ...]:
+    first = _module(finished=first_finished)
+    first["frame_path"] = [0, 0]
+    second = _module(finished=second_finished)
+    second["frame_path"] = [0, 1]
+    frames = _page_state(first, second, video=_video(ended=True, current_time=10.0))
+    assert isinstance(frames[-1], dict)
+    frames[-1]["frame_path"] = [0, 0]
+    second_frame = dict(frames[-1])
+    second_frame["frame_path"] = [0, 1]
+    second_frame["video"] = _video(ended=True, current_time=10.0)
+    return (*frames, second_frame)
+
+
+def test_same_url_finished_sibling_cannot_complete_pending_task_point() -> None:
+    browser = ScriptedFrameBrowser([_duplicate_video_state(first_finished=True, second_finished=False)])
+
+    with pytest.raises(VideoTimeoutError, match="media ended"):
+        _handler(browser, FakeClock()).run()
+
+
+def test_same_url_task_point_completes_only_after_its_own_marker() -> None:
+    browser = ScriptedFrameBrowser(
+        [
+            _duplicate_video_state(first_finished=True, second_finished=False),
+            _duplicate_video_state(first_finished=True, second_finished=False),
+            _duplicate_video_state(first_finished=True, second_finished=True),
+        ]
+    )
+    clock = FakeClock()
+
+    _handler(browser, clock).run()
+
+    assert clock.sleep_calls == [1.0]
+
+
+def test_same_url_modules_without_frame_identity_still_fail_closed() -> None:
+    browser = ScriptedFrameBrowser([_page_state(_module(), _module())])
+
+    with pytest.raises(VideoTaskError, match="module is ambiguous"):
+        _handler(browser, FakeClock()).run()
+
+
+@pytest.mark.parametrize("frame_path", [[True], [-1], [1.5], "0/1"])
+def test_invalid_frame_path_is_rejected(frame_path: object) -> None:
+    module = _module()
+    module["frame_path"] = frame_path
+    browser = ScriptedFrameBrowser([_page_state(module)])
+
+    with pytest.raises(VideoTaskError, match="Unable to inspect"):
+        _handler(browser, FakeClock()).run()

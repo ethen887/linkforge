@@ -65,11 +65,27 @@ class RecordingPlatformRuntime:
         runner: TaskRunner,
         *,
         build_error: Exception | None = None,
+        prepare_error: Exception | None = None,
+        ready: bool = True,
     ) -> None:
         self._events = events
         self._runner = runner
         self._build_error = build_error
+        self._prepare_error = prepare_error
+        self._ready = ready
+        self.stop_during_prepare: Callable[[], None] | None = None
         self.received: tuple[Browser, LLM, str] | None = None
+
+    def prepare(self, *, browser: Browser, course_url: str, should_stop: Callable[[], bool]) -> bool:
+        self._events.append("platform.prepare")
+        assert browser.current_url() == course_url
+        if self._prepare_error is not None:
+            raise self._prepare_error
+        if self.stop_during_prepare is not None:
+            self.stop_during_prepare()
+            assert should_stop()
+            return False
+        return self._ready
 
     def build_runner(self, *, browser: Browser, llm: LLM, model: str) -> TaskRunner:
         self._events.append("platform.build_runner")
@@ -137,6 +153,7 @@ def test_run_owns_lifecycle_and_passes_resources_to_platform() -> None:
         "llm.factory",
         "browser.start",
         "browser.open:https://courses.example.test/course",
+        "platform.prepare",
         "platform.build_runner",
         "runner.run",
         "browser.close",
@@ -147,7 +164,7 @@ def test_run_owns_lifecycle_and_passes_resources_to_platform() -> None:
     assert runner.should_stop() is False
 
 
-@pytest.mark.parametrize("failure_stage", ["open", "build", "run"])
+@pytest.mark.parametrize("failure_stage", ["open", "prepare", "build", "run"])
 def test_run_closes_browser_and_propagates_errors(failure_stage: str) -> None:
     events: list[str] = []
     error = RuntimeError(f"{failure_stage} failed")
@@ -157,6 +174,7 @@ def test_run_closes_browser_and_propagates_errors(failure_stage: str) -> None:
         events,
         runner,
         build_error=error if failure_stage == "build" else None,
+        prepare_error=error if failure_stage == "prepare" else None,
     )
     application = _application(
         events=events,
@@ -193,6 +211,22 @@ def test_stop_is_observed_by_runner_without_closing_browser_directly() -> None:
 
     assert runner.should_stop is not None
     assert runner.should_stop() is True
+    assert events[-1] == "browser.close"
+
+
+def test_stop_during_preparation_closes_browser_without_building_tasks() -> None:
+    events: list[str] = []
+    browser = RecordingBrowser(events)
+    runner = RecordingTaskRunner(events)
+    platform = RecordingPlatformRuntime(events, runner)
+    application = _application(events=events, browser=browser, llm=FakeLLM(), platform=platform)
+    platform.stop_during_prepare = application.stop
+
+    application.run()
+
+    assert "platform.prepare" in events
+    assert "platform.build_runner" not in events
+    assert "runner.run" not in events
     assert events[-1] == "browser.close"
 
 
