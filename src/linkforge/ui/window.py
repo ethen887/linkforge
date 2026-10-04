@@ -28,7 +28,8 @@ from PySide6.QtWidgets import (
 
 from linkforge.application import ApplicationConfig
 from linkforge.composition import create_application
-from linkforge.config import MODEL_PROVIDERS, BrowserConfig, create_model_config
+from linkforge.config import MODEL_PROVIDERS, BrowserConfig, ModelConfig, create_model_config
+from linkforge.ui.settings import UserSettings, UserSettingsStore
 from linkforge.ui.worker import ApplicationFactory, GuiLogHandler, RuntimeWorker
 
 logger = logging.getLogger(__name__)
@@ -61,9 +62,11 @@ class MainWindow(QMainWindow):
         *,
         application_factory: ApplicationFactory = create_application,
         error_presenter: Callable[[str, str], None] | None = None,
+        settings_store: UserSettingsStore | None = None,
     ) -> None:
         super().__init__()
         self._application_factory = application_factory
+        self._settings_store = settings_store if settings_store is not None else UserSettingsStore()
         self._error_presenter = error_presenter or self._show_error_dialog
         self._state = RuntimeState.IDLE
         self._thread: QThread | None = None
@@ -78,6 +81,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(760, 560)
         self.setCentralWidget(self._build_central_widget())
         self.statusBar().showMessage("就绪")
+        self._restore_settings()
         self._apply_state()
 
     @property
@@ -136,7 +140,6 @@ class MainWindow(QMainWindow):
 
         self.model_edit = QLineEdit()
         self.model_edit.setObjectName("modelEdit")
-        self.provider_combo.currentIndexChanged.connect(self._set_default_model)
         self.api_key_edit = QLineEdit()
         self.api_key_edit.setObjectName("apiKeyEdit")
         self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -195,6 +198,7 @@ class MainWindow(QMainWindow):
             self.profile_browse_button,
         )
         self._set_default_model()
+        self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         return layout
 
     def _build_controls(self) -> QHBoxLayout:
@@ -249,6 +253,33 @@ class MainWindow(QMainWindow):
         self.api_key_edit.setEchoMode(mode)
         self.api_key_toggle.setText("隐藏" if visible else "显示")
 
+    def _restore_settings(self) -> None:
+        settings = self._settings_store.load()
+        self.course_url_edit.setText(settings.course_url)
+        self.profile_dir_edit.setText(settings.profile_dir)
+        index = self.provider_combo.findData(settings.provider)
+        if index >= 0:
+            self.provider_combo.blockSignals(True)
+            self.provider_combo.setCurrentIndex(index)
+            self.provider_combo.blockSignals(False)
+            self._set_default_model()
+            if settings.model:
+                self.model_edit.setText(settings.model)
+        self._load_provider_api_key()
+
+    def _on_provider_changed(self) -> None:
+        self._set_default_model()
+        self._load_provider_api_key()
+
+    def _load_provider_api_key(self) -> None:
+        # Clear the previous provider's key before any credential lookup.
+        self.api_key_edit.clear()
+        self.api_key_toggle.setChecked(False)
+        self._toggle_api_key(False)
+        provider = self.provider_combo.currentData()
+        if isinstance(provider, str):
+            self.api_key_edit.setText(self._settings_store.load_api_key(provider) or "")
+
     def _choose_profile_directory(self) -> None:
         initial = self.profile_dir_edit.text().strip() or str(Path.home())
         selected = QFileDialog.getExistingDirectory(self, "选择浏览器用户目录", initial)
@@ -258,9 +289,19 @@ class MainWindow(QMainWindow):
     def _start(self) -> None:
         if self._thread is not None:
             return
-        config = self._validated_config()
-        if config is None:
+        validated = self._validated_config()
+        if validated is None:
             return
+        settings, model_config, browser_config = validated
+        saved_settings = self._settings_store.save(settings)
+        saved_key = self._settings_store.save_api_key(settings.provider, model_config.api_key)
+        if not saved_settings or not saved_key:
+            self._append_log("部分配置未能保存，本次运行仍将继续。")
+        config = ApplicationConfig(
+            course_url=settings.course_url,
+            browser_config=browser_config,
+            model_config=model_config,
+        )
 
         self._set_state(RuntimeState.STARTING, "正在启动 LinkForge…")
         self._append_log("正在启动 LinkForge")
@@ -279,7 +320,7 @@ class MainWindow(QMainWindow):
         self._worker = worker
         thread.start()
 
-    def _validated_config(self) -> ApplicationConfig | None:
+    def _validated_config(self) -> tuple[UserSettings, ModelConfig, BrowserConfig] | None:
         course_url = self.course_url_edit.text().strip()
         provider = self.provider_combo.currentData()
         model = self.model_edit.text().strip()
@@ -300,11 +341,8 @@ class MainWindow(QMainWindow):
         try:
             model_config = create_model_config(provider=provider, api=api_key, model_name=model)
             browser_config = BrowserConfig(headless=False, profile_dir=profile_dir)
-            return ApplicationConfig(
-                course_url=course_url,
-                browser_config=browser_config,
-                model_config=model_config,
-            )
+            settings = UserSettings(course_url, provider, model, profile_dir or "")
+            return settings, model_config, browser_config
         except ValueError as exc:
             logger.error("GUI configuration validation failed with %s", type(exc).__name__)
             self._validation_error("运行配置无效，请检查输入内容。")

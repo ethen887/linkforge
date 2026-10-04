@@ -12,7 +12,7 @@ LinkForge configuration models and built-in provider definitions.
 本模块只描述“配置是什么”，不负责创建或运行具体的 LLM、Browser 等资源。
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -30,7 +30,7 @@ class ModelConfig:
         protocol: Provider 所使用的接口协议。
     """
 
-    api_key: str
+    api_key: str = field(repr=False)
     base_url: str
     model_name: str
     protocol: str = "openai"

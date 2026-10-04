@@ -14,6 +14,11 @@ from linkforge.config.settings import (
 class TestModelConfig:
     """Tests for ModelConfig."""
 
+    def test_api_key_is_excluded_from_repr(self):
+        config = ModelConfig(api_key="test-openai-key", base_url="https://example.test", model_name="m")
+        assert "test-openai-key" not in repr(config)
+        assert "api_key" not in repr(config)
+
     def test_default_protocol(self):
         """ModelConfig should use the OpenAI protocol by default."""
         cfg = ModelConfig(

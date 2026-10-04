@@ -15,6 +15,29 @@ from linkforge.observation.base import Observer
 from linkforge.observation.models import Observation
 
 
+class FakeCredentialStore:
+    """Keep explicitly fake credentials in memory, never in the OS store."""
+
+    def __init__(self) -> None:
+        self._passwords: dict[tuple[str, str], str] = {}
+        self.get_calls: list[tuple[str, str]] = []
+        self.set_calls: list[tuple[str, str]] = []
+        self.read_error: Exception | None = None
+        self.write_error: Exception | None = None
+
+    def get_password(self, service: str, username: str) -> str | None:
+        self.get_calls.append((service, username))
+        if self.read_error is not None:
+            raise self.read_error
+        return self._passwords.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.set_calls.append((service, username))
+        if self.write_error is not None:
+            raise self.write_error
+        self._passwords[(service, username)] = password
+
+
 class FakeObserver(Observer):
     """Return scripted observations while recording loop events."""
 
