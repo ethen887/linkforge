@@ -49,6 +49,10 @@ class Browser(ABC):
         """
         raise BrowserError("This browser does not support scoped DOM elements.")
 
+    def page_element_scope(self, selector: str) -> AbstractContextManager[tuple[BrowserElement, ...]]:
+        """Capture nodes in the selected page's main frame, releasing them on exit."""
+        raise BrowserError("This browser does not support main-frame DOM elements.")
+
     def __enter__(self) -> Self:
         """
         启动浏览器并进入上下文管理器。
@@ -107,6 +111,10 @@ class Browser(ABC):
             BrowserError: 浏览器未启动、导航失败或发生其他浏览器错误时抛出。
         """
         raise NotImplementedError
+
+    def open_for_readiness(self, url: str) -> None:
+        """Navigate before caller-owned readiness checks; fall back to ordinary open."""
+        self.open(url)
 
     @abstractmethod
     def current_url(self) -> str:

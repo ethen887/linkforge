@@ -214,6 +214,13 @@ class PlaywrightBrowser(Browser):
             BrowserNavigationError:
                 页面导航发生其他 Playwright 错误。
         """
+        self._open(url, wait_for_dom=False)
+
+    def open_for_readiness(self, url: str) -> None:
+        """Wait for DOM parsing, then let the caller check business readiness."""
+        self._open(url, wait_for_dom=True)
+
+    def _open(self, url: str, *, wait_for_dom: bool) -> None:
         if not url.strip():
             raise ValueError("url must not be empty")
 
@@ -224,6 +231,7 @@ class PlaywrightBrowser(Browser):
             page.goto(
                 url,
                 timeout=self._timeout_ms,
+                wait_until="domcontentloaded" if wait_for_dom else "load",
             )
 
         except PlaywrightTimeoutError as exc:
@@ -381,6 +389,10 @@ class PlaywrightBrowser(Browser):
             if managed == page:
                 return BrowserPage(page_id=page_id, url=page.url)
         raise BrowserClosedError("The current browser page is not managed.")
+
+    def page_element_scope(self, selector: str) -> AbstractContextManager[tuple[BrowserElement, ...]]:
+        page = self._require_page()
+        return element_scope(page, page.url, selector, ancestor_url=page.url, include_ancestor=True)
 
     def open_new_page_from_frame(
         self,

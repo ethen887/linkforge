@@ -14,6 +14,7 @@ from linkforge.platforms.chaoxing.comment_handler import (
 from linkforge.platforms.chaoxing.comment_state import CommentSession
 from linkforge.platforms.chaoxing.content_handler import ChaoxingContentTaskHandler
 from linkforge.platforms.chaoxing.document_handler import ChaoxingDocumentTaskHandler
+from linkforge.platforms.chaoxing.innerbook import InnerbookSession
 from linkforge.platforms.chaoxing.quiz_handler import ChaoxingQuizTaskHandler, QuizSubmitter
 from linkforge.platforms.chaoxing.quiz_solver import LLMQuizSolver
 from linkforge.platforms.chaoxing.startup import ChaoxingStartupWait
@@ -43,8 +44,12 @@ class ChaoxingPlatformRuntime(PlatformRuntime):
         logger.info("Building Chaoxing task workflow")
         comment_session = CommentSession()
         video_session = VideoSession()
+        innerbook_session = InnerbookSession()
         detector = ChaoxingTaskDetector(
-            browser, comment_session=comment_session, video_session=video_session
+            browser,
+            comment_session=comment_session,
+            video_session=video_session,
+            innerbook_session=innerbook_session,
         )
         quiz_solver = LLMQuizSolver(llm=llm, model=model)
         comment_generator = LLMCommentBodyGenerator(llm=llm, model=model)
@@ -52,7 +57,11 @@ class ChaoxingPlatformRuntime(PlatformRuntime):
         runner = TaskRunner(
             detector=detector,
             video_handler=ChaoxingVideoTaskHandler(browser, video_session=video_session),
-            document_handler=ChaoxingDocumentTaskHandler(browser),
+            document_handler=ChaoxingDocumentTaskHandler(
+                browser,
+                innerbook_session=innerbook_session,
+                video_session=video_session,
+            ),
             content_handler=ChaoxingContentTaskHandler(browser, detector=detector),
             quiz_handler=ChaoxingQuizTaskHandler(
                 browser,

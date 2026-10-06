@@ -123,7 +123,10 @@ CHAOXING_STATE_SCRIPT = (
 )
 
 
-CHAOXING_CARD_STATE_SCRIPT = r"""() => {
+CHAOXING_CARD_STATE_SCRIPT = (
+    "() => {"
+    + FRAME_PATH_SCRIPT
+    + r"""
     const findValue = (value, keys) => {
         if (!value || typeof value !== "object") {
             return null;
@@ -223,6 +226,13 @@ CHAOXING_CARD_STATE_SCRIPT = r"""() => {
         for (const moduleFrame of moduleFrames) {
             const container = moduleFrame.closest(".ans-attach-ct");
             const moduleData = parseModuleData(moduleFrame);
+            let childIndex = -1;
+            for (let index = 0; index < window.length; index++) {
+                if (window[index] === moduleFrame.contentWindow) {
+                    childIndex = index;
+                    break;
+                }
+            }
 
             const hasJobIcon = container
                 ? container.querySelector(".ans-job-icon") !== null
@@ -230,6 +240,7 @@ CHAOXING_CARD_STATE_SCRIPT = r"""() => {
 
             modules.push({
                 module_url: moduleFrame.getAttribute("src"),
+                frame_path: childIndex < 0 ? null : [...framePath, childIndex],
                 object_id: moduleData.object_id || null,
                 declared_page_count:
                     moduleData.declared_page_count || null,
@@ -339,6 +350,7 @@ CHAOXING_CARD_STATE_SCRIPT = r"""() => {
         viewer,
     };
 }"""
+)
 
 
 def inspect_chaoxing_page(

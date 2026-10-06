@@ -65,7 +65,7 @@ def _under(frame: Frame, ancestor: Frame) -> bool:
 
 @contextmanager
 def element_scope(
-    page: Page, frame_url_contains: str, selector: str, *, ancestor_url: str
+    page: Page, frame_url_contains: str, selector: str, *, ancestor_url: str, include_ancestor: bool = False
 ) -> Iterator[tuple[BrowserElement, ...]]:
     handles: list[ElementHandle] = []
     try:
@@ -75,7 +75,8 @@ def element_scope(
         frames = [
             frame
             for frame in page.frames
-            if frame_url_contains in frame.url and _under(frame, ancestors[0])
+            if frame_url_contains in frame.url
+            and (_under(frame, ancestors[0]) or (include_ancestor and frame == ancestors[0]))
         ]
         if len(frames) != 1:
             raise BrowserError("Expected exactly one descendant frame for DOM element scope.")

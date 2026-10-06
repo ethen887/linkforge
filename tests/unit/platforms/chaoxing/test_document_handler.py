@@ -323,6 +323,22 @@ def test_handler_has_bounded_overall_timeout() -> None:
         _handler(browser, FakeClock(), ready_timeout=2.0, timeout=0.5).run()
 
 
+def test_default_handler_allows_progressing_pdf_to_take_longer_than_sixty_seconds() -> None:
+    browser = SequenceBrowser(
+        _frames(_module(), viewers=(_viewer(scroll_y=y, inner_height=100, scroll_height=10000),))
+        for y in range(0, 10000, 100)
+    )
+    clock = FakeClock()
+    ChaoxingDocumentTaskHandler(
+        browser,
+        poll_interval_seconds=1,
+        clock=clock,
+        sleeper=clock.sleep,
+    ).run()
+    assert clock.now > 60
+    assert len(browser.scroll_scripts) == 99
+
+
 @pytest.mark.parametrize(
     "overrides",
     [

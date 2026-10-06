@@ -15,6 +15,7 @@ from linkforge.platforms.chaoxing.exceptions import (
     ChaoxingQuizStateError,
     ChaoxingQuizSubmissionError,
 )
+from linkforge.platforms.chaoxing.quiz_dom import QuizDOMQuestion
 from linkforge.platforms.chaoxing.quiz_handler import ChaoxingQuizHandlerConfig, ChaoxingQuizTaskHandler
 from linkforge.platforms.chaoxing.quiz_models import QuizAnswer, QuizQuestionType
 from linkforge.platforms.chaoxing.quiz_solver import LLMQuizSolver
@@ -225,6 +226,64 @@ def test_multiple_existing_radio_answers_fail_before_click():
     handler, _, _, _ = make_handler([element], [QuizAnswer(Q.SINGLE_CHOICE, ("A",))])
     with pytest.raises(ChaoxingQuizStateError, match="multiple selected"):
         handler.answer_all()
+
+
+@pytest.mark.parametrize(
+    "failure", ["aria_conflict", "hidden_conflict", "duplicate", "encoding", "mapping"]
+)
+def test_marker_contract_rejects_conflicting_or_malformed_selection(failure, caplog):
+    element, _ = make_question(Q.MULTIPLE_CHOICE, count=2, initial_aria=False)
+    states = [
+        {
+            "kind": "checkbox",
+            "index": i,
+            "count": 2,
+            "aria": None,
+            "checked": None,
+            "marker_count": 1,
+            "marker_checked": False,
+            "marker_value": letter,
+        }
+        for i, letter in enumerate("AB")
+    ]
+    for node, state in zip(element.children, states):
+        node.inspect = lambda state=state: state
+    hidden = {"value": ""}
+    element.inspect = lambda: {"title": "多选题", "hidden_answers": [hidden["value"]], "images_ready": True}
+    dom = QuizDOMQuestion(element, 21)
+    assert dom.selected(Q.MULTIPLE_CHOICE) == set()
+    if failure == "aria_conflict":
+        states[0]["aria"] = "true"
+    elif failure == "hidden_conflict":
+        hidden["value"] = "A"
+    elif failure == "duplicate":
+        states[0]["marker_count"] = 2
+    elif failure == "encoding":
+        hidden["value"] = "A,A"
+    else:
+        states[0]["marker_value"] = "B"
+    with caplog.at_level("DEBUG"), pytest.raises(ChaoxingQuizStateError):
+        dom.selected(Q.MULTIPLE_CHOICE)
+    if failure in ("aria_conflict", "hidden_conflict"):
+        assert "question_index=21" in caplog.text and "reason=conflicting" in caplog.text
+
+
+def test_missing_checkbox_state_without_verified_markers_still_fails():
+    element, _ = make_question(Q.MULTIPLE_CHOICE, initial_aria=False)
+    dom = QuizDOMQuestion(element, 0)
+    with pytest.raises(ChaoxingQuizStateError, match="missing or conflicting"):
+        dom.selected(Q.MULTIPLE_CHOICE)
+
+
+def test_later_question_missing_state_stops_before_any_model_call_or_click():
+    events = []
+    first, _ = make_question(events=events)
+    second, _ = make_question(Q.MULTIPLE_CHOICE, initial_aria=False, name="q2", events=events)
+    handler, _, _, questions = make_handler([first, second], [])
+    with pytest.raises(ChaoxingQuizStateError, match="missing or conflicting"):
+        handler.answer_all()
+    assert not questions
+    assert not events
 
 
 @pytest.mark.parametrize("submit_behavior", ["complete", "timeout", "error"])

@@ -1,7 +1,11 @@
 """Fail-closed normal-UI submission for Chaoxing Quiz tasks."""
 
+import logging
+import time
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass
+from math import isfinite
 
 from linkforge.browser.base import Browser
 from linkforge.browser.element import BrowserElement
@@ -10,9 +14,20 @@ from linkforge.platforms.chaoxing.exceptions import ChaoxingQuizSubmissionError
 from linkforge.platforms.chaoxing.quiz_dom import QUESTION_FRAME_PATH
 
 _CONTROL_SELECTOR = 'button, input[type="button"], input[type="submit"], [role="button"]'
+_TOP_CONFIRM_SELECTOR = "#workpop #popok"
+logger = logging.getLogger(__name__)
 _CONTROL_STATE_EXPRESSION = r"""element => {
     const style = window.getComputedStyle(element);
+    const popup = element.closest('#workpop');
+    const popupBody = popup?.querySelector('#popcontent');
+    const dialog = popup || element.closest('.popDiv, [role="dialog"]');
     return {
+        top_confirmation: !!popupBody && element.id === 'popok'
+            && popup.querySelectorAll('#popok').length === 1
+            && popup.querySelectorAll('#popno').length === 1,
+        unfinished_warning: /未完成|未答|未作答|未做|unfinished|unanswered|incomplete/i.test(
+            (popupBody || dialog)?.textContent || ''
+        ),
         tag: element.tagName.toLowerCase(),
         id: element.id || "",
         type: element.getAttribute("type") || "",
@@ -65,10 +80,27 @@ class _Control:
     label: str
     visible: bool
     enabled: bool
+    top_confirmation: bool
+    unfinished_warning: bool
 
 
 class ChaoxingQuizSubmitter:
     """Submit one answered Quiz through unique visible controls, without retries."""
+
+    def __init__(
+        self,
+        *,
+        confirmation_timeout_seconds: float = 3.0,
+        poll_interval_seconds: float = 0.1,
+        sleep: Callable[[float], None] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if any(not isfinite(v) or v <= 0 for v in (confirmation_timeout_seconds, poll_interval_seconds)):
+            raise ValueError("Confirmation timing values must be finite and positive")
+        self._confirmation_timeout = confirmation_timeout_seconds
+        self._poll_interval = poll_interval_seconds
+        self._sleep = sleep
+        self._monotonic = monotonic
 
     def submit(self, browser: Browser, *, module_url: str) -> None:
         """Click one submit control and its unique DOM confirmation exactly once."""
@@ -94,14 +126,38 @@ class ChaoxingQuizSubmitter:
 
     def _click_unique_confirmation(self, browser: Browser, *, module_url: str) -> None:
         try:
-            with browser.element_scope(
-                QUESTION_FRAME_PATH,
-                _CONTROL_SELECTOR,
-                ancestor_url=module_url,
-            ) as elements:
-                controls = tuple(self._inspect(element, phase="confirmation") for element in elements)
-                target = _unique_best(controls, _confirmation_score, phase="confirmation")
-                target.element.click()
+            deadline = self._monotonic() + self._confirmation_timeout
+            while True:
+                with ExitStack() as stack:
+                    local = stack.enter_context(
+                        browser.element_scope(
+                            QUESTION_FRAME_PATH,
+                            _CONTROL_SELECTOR,
+                            ancestor_url=module_url,
+                        )
+                    )
+                    top = stack.enter_context(browser.page_element_scope(_TOP_CONFIRM_SELECTOR))
+                    controls = tuple(self._inspect(e, phase="confirmation") for e in (*local, *top))
+                    if any(c.visible and c.unfinished_warning for c in controls):
+                        logger.debug("Chaoxing quiz confirmation blocked: reason=unfinished_questions")
+                        raise ChaoxingQuizSubmissionError(
+                            "Platform reports unfinished questions; confirmation was not clicked."
+                        )
+                    if any(_confirmation_score(c) > 0 for c in controls):
+                        target = _unique_best(controls, _confirmation_score, phase="confirmation")
+                        target.element.click()
+                        return
+                    logger.debug(
+                        "Chaoxing quiz confirmation pending: local_count=%d top_count=%d visible_count=%d",
+                        len(local),
+                        len(top),
+                        sum(c.visible for c in controls),
+                    )
+                if self._monotonic() >= deadline:
+                    raise ChaoxingQuizSubmissionError(
+                        "No trustworthy Quiz confirmation control was found within the bounded wait."
+                    )
+                self._sleep(self._poll_interval)
         except ChaoxingQuizSubmissionError:
             raise
         except BrowserError as exc:
@@ -119,6 +175,8 @@ class ChaoxingQuizSubmitter:
         enabled = raw.get("enabled")
         if not isinstance(visible, bool) or not isinstance(enabled, bool):
             raise ChaoxingQuizSubmissionError(f"Quiz {phase} control state is malformed.")
+        if any(type(raw.get(key, False)) is not bool for key in ("top_confirmation", "unfinished_warning")):
+            raise ChaoxingQuizSubmissionError(f"Quiz {phase} dialog state is malformed.")
 
         return _Control(
             element=element,
@@ -132,6 +190,8 @@ class ChaoxingQuizSubmitter:
             ).strip(),
             visible=visible,
             enabled=enabled,
+            top_confirmation=raw.get("top_confirmation", False),
+            unfinished_warning=raw.get("unfinished_warning", False),
         )
 
 
@@ -187,6 +247,8 @@ def _confirmation_score(control: _Control) -> int:
     if not control.visible or not control.enabled or control.element_id == "submitBackCancel":
         return -1
     if control.element_id == "submitBackOk":
+        return 200
+    if control.top_confirmation and control.element_id == "popok":
         return 200
     if control.label.lower() in _CONFIRM_EXACT_LABELS:
         return 120

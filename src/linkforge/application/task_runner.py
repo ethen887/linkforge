@@ -55,7 +55,7 @@ class TaskRunner:
         content_handler: TaskHandler,
         comment_handler: TaskHandler,
         quiz_handler: TaskHandler,
-        unknown_retry_attempts: int = 0,
+        unknown_retry_attempts: int = 3,
         unknown_retry_interval_seconds: float = 0.5,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:

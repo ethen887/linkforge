@@ -26,7 +26,7 @@ from linkforge.platforms.chaoxing.quiz_dom import (
     QUIZ_MODULE_PATH,
     QuizDOMQuestion,
 )
-from linkforge.platforms.chaoxing.quiz_models import QuizAnswer, validate_answer
+from linkforge.platforms.chaoxing.quiz_models import QuizAnswer, QuizQuestionType, validate_answer
 from linkforge.platforms.chaoxing.quiz_solver import QuizSolver
 from linkforge.platforms.chaoxing.task_detector import ChaoxingTaskDetector
 
@@ -139,6 +139,10 @@ class ChaoxingQuizTaskHandler(TaskHandler):
                     break
                 # Preflight every structure before the first model call or click.
                 questions = [QuizDOMQuestion(element, i) for i, element in enumerate(elements)]
+                for dom in questions:
+                    # Radio state can be checked even when Vision must later
+                    # distinguish single-choice from true/false.
+                    dom.selected(dom.hint or QuizQuestionType.SINGLE_CHOICE)
                 answers = []
                 for dom in questions:
                     if self._target() != (content_url, module_url):

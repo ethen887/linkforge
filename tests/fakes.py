@@ -1,6 +1,6 @@
 """Test doubles for external LinkForge interfaces."""
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 
 from linkforge.action.base import ActionExecutor
@@ -13,6 +13,19 @@ from linkforge.browser.exceptions import BrowserElementError, BrowserError
 from linkforge.browser.models import BrowserPage, InteractiveElement
 from linkforge.observation.base import Observer
 from linkforge.observation.models import Observation
+
+
+class ManualClock:
+    """Advance a deterministic monotonic clock when a test requests sleep."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
 
 
 class FakeCredentialStore:
@@ -171,6 +184,11 @@ class FakeBrowser(Browser):
         self.frame_evaluation_calls.append(expression)
         return self.frame_evaluation_results
 
+    @contextmanager
+    def page_element_scope(self, selector: str) -> Iterator[tuple[BrowserElement, ...]]:
+        self.action_calls.append(("page_element_scope", selector))
+        yield ()
+
     def current_page(self) -> BrowserPage:
         self._raise_observation_error()
         return BrowserPage(page_id=self.page.page_id, url=self.url)
@@ -241,6 +259,26 @@ class FakeBrowser(Browser):
     def _require_target(self, target_id: int) -> None:
         if target_id not in self._active_target_ids:
             raise BrowserElementError(f"Unknown or stale target_id: {target_id}")
+
+
+class ScriptedInnerbookBrowser(FakeBrowser):
+    """Pair card/reader snapshots while recording reader actions separately."""
+
+    def __init__(self, snapshots: Sequence[tuple[tuple[object, ...], tuple[object, ...]]]) -> None:
+        super().__init__()
+        self.snapshots = list(snapshots)
+        self.index = -1
+        self.actions: list[str] = []
+
+    def evaluate_in_frames(self, expression: str) -> tuple[object, ...]:
+        self.frame_evaluation_calls.append(expression)
+        if "const modulePath" in expression:
+            self.actions.append(expression)
+            return ({"matched": True},)
+        if "__linkforgeInnerbookImages" in expression:
+            return self.snapshots[max(0, self.index)][1]
+        self.index = min(self.index + 1, len(self.snapshots) - 1)
+        return self.snapshots[self.index][0]
 
 
 class FakeDOMElement:
