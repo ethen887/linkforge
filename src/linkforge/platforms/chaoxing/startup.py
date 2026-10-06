@@ -17,7 +17,7 @@ CHAOXING_STARTUP_SCRIPT = r"""() => {
     const host = location.hostname.toLowerCase();
     const path = location.pathname.toLowerCase();
     const trusted = host === 'chaoxing.com' || host.endsWith('.chaoxing.com');
-    const loaded = document.readyState === 'complete';
+    const loaded = document.readyState === 'interactive' || document.readyState === 'complete';
     const loginHost = host === 'passport2.chaoxing.com'
         || host === 'passport.chaoxing.com';
     const loginPage = trusted && (loginHost || path.split('/').some(
@@ -103,7 +103,7 @@ class ChaoxingStartupWait:
                 if should_stop():
                     return False
                 logger.info("Returning to requested Chaoxing course after login")
-                browser.open(course_url)
+                browser.open_for_readiness(course_url)
                 course_reopened = True
                 continue
             self._sleep(min(self._poll_interval, deadline - now))

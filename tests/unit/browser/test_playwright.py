@@ -4,9 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 import linkforge.browser.playwright as playwright_module
-from linkforge.browser.exceptions import BrowserError
+from linkforge.browser.exceptions import BrowserError, BrowserTimeoutError
 from linkforge.browser.playwright import PlaywrightBrowser
 
 
@@ -247,3 +248,17 @@ def test_persistent_profile_creates_page_only_when_context_has_none(
 
     assert len(chromium.persistent_launch_calls) == 1
     assert persistent_context.new_page_calls == 1
+
+
+def test_open_still_propagates_navigation_timeout_without_retry():
+    calls = []
+
+    def goto(url, **kwargs):
+        calls.append((url, kwargs))
+        raise PlaywrightTimeoutError("Navigation did not receive a document")
+
+    browser = PlaywrightBrowser(timeout_ms=1_000)
+    browser._page = SimpleNamespace(is_closed=lambda: False, goto=goto)
+    with pytest.raises(BrowserTimeoutError):
+        browser.open_for_readiness("https://example.test/course")
+    assert calls == [("https://example.test/course", {"timeout": 1_000, "wait_until": "domcontentloaded"})]

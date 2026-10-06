@@ -9,6 +9,7 @@ from linkforge.application.task_runner import TaskRunner, TaskType
 from linkforge.browser.base import Browser
 from linkforge.llm.base import LLM, LLMMessage, LLMResponse
 from linkforge.platforms.chaoxing.comment_state import CommentSession
+from linkforge.platforms.chaoxing.innerbook import InnerbookSession
 from linkforge.platforms.chaoxing.runtime import ChaoxingPlatformRuntime
 from linkforge.platforms.chaoxing.video_state import VideoSession
 from tests.fakes import FakeBrowser
@@ -73,6 +74,7 @@ class BuildRecord:
     session: CommentSession
     detector: ScriptedDetector
     video_session: VideoSession
+    innerbook_session: InnerbookSession
     quiz_solver: object | None = None
     comment_generator: object | None = None
 
@@ -88,7 +90,11 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
     generator_calls: list[tuple[LLM, str]] = []
 
     def create_detector(
-        received_browser: Browser, *, comment_session: CommentSession, video_session: VideoSession
+        received_browser: Browser,
+        *,
+        comment_session: CommentSession,
+        video_session: VideoSession,
+        innerbook_session: InnerbookSession,
     ) -> ScriptedDetector:
         detector = ScriptedDetector(
             [
@@ -100,7 +106,9 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
                 TaskType.COMPLETE,
             ]
         )
-        records.append(BuildRecord(received_browser, comment_session, detector, video_session))
+        records.append(
+            BuildRecord(received_browser, comment_session, detector, video_session, innerbook_session)
+        )
         return detector
 
     def create_quiz_solver(*, llm: LLM, model: str) -> object:
@@ -125,11 +133,12 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
             comment_session: object | None = None,
             body_generator: object | None = None,
             video_session: VideoSession | None = None,
+            innerbook_session: InnerbookSession | None = None,
         ) -> RecordingHandler:
             if name == "video":
                 dependency = video_session
             elif name == "document":
-                dependency = None
+                dependency = (innerbook_session, video_session)
             elif name == "content":
                 dependency = detector
             elif name == "quiz":
@@ -159,6 +168,7 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
     assert len(records) == 2
     assert records[0].session is not records[1].session
     assert records[0].video_session is not records[1].video_session
+    assert records[0].innerbook_session is not records[1].innerbook_session
     assert all(record.browser is browser for record in records)
     assert solver_calls == [(llm, "vision-model"), (llm, "vision-model")]
     assert generator_calls == [(llm, "vision-model"), (llm, "vision-model")]
@@ -173,6 +183,8 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
     ]
     assert all(received_browser is browser for _, received_browser, _, _ in first_dependencies)
     assert first_dependencies[0][2] is records[0].video_session
+    assert first_dependencies[1][2] == (records[0].innerbook_session, records[0].video_session)
+    assert handler_dependencies[6][2] == (records[1].innerbook_session, records[1].video_session)
     assert handler_dependencies[5][2] is records[1].video_session
     assert first_dependencies[2][2] is records[0].detector
     assert first_dependencies[3][2] == (

@@ -1,12 +1,16 @@
 """Unit tests for deterministic Chaoxing task detection."""
 
+import logging
 from typing import Any
 
 import pytest
 
 from linkforge.application.task_runner import TaskDetector, TaskType
 from linkforge.browser.exceptions import BrowserError
+from linkforge.platforms.chaoxing.exceptions import ChaoxingInspectionError
+from linkforge.platforms.chaoxing.models import ChaoxingModuleState, ChaoxingPageState
 from linkforge.platforms.chaoxing.task_detector import ChaoxingTaskDetector
+from linkforge.platforms.chaoxing.video_state import VideoSession
 from tests.fakes import FakeBrowser
 
 _PAGE_URL = "https://mooc1.chaoxing.com/mycourse/studentstudy"
@@ -435,6 +439,160 @@ def test_browser_inspection_failure_is_unknown() -> None:
     browser = FakeBrowser(observation_error=BrowserError("inspection failed"))
 
     assert ChaoxingTaskDetector(browser).detect() is TaskType.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    ("active_tabs", "content_count", "reason"),
+    [
+        (0, 0, "incomplete_card_state"),
+        (1, 0, "incomplete_card_state"),
+        (2, 1, "ambiguous_card_state"),
+        (1, 2, "ambiguous_card_state"),
+    ],
+)
+def test_card_unavailability_logs_safe_counts(
+    active_tabs: int, content_count: int, reason: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    frames = (
+        {"frame_url": _PAGE_URL, "active_tab_count": active_tabs, "modules": [], "viewer": None},
+        *(
+            {"frame_url": _CONTENT_URL, "active_tab_count": 0, "modules": [], "viewer": None}
+            for _ in range(content_count)
+        ),
+    )
+    caplog.set_level(logging.DEBUG)
+
+    assert ChaoxingTaskDetector(FakeBrowser(frame_evaluation_results=frames)).detect() is TaskType.UNKNOWN
+
+    assert f"reason={reason}" in caplog.text
+    assert f"active_tab_count={active_tabs} content_frame_count={content_count}" in caplog.text
+    assert "reason=course_state_unavailable" in caplog.text
+    assert _PAGE_URL not in caplog.text
+    assert _CONTENT_URL not in caplog.text
+
+
+def test_unsupported_module_diagnostic_does_not_log_url_or_skip(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG)
+    browser = _browser_with_modules(
+        _module("https://example.test/ananas/modules/audio/index.html?token=PRIVATE"),
+        _module("/ananas/modules/video/index.html"),
+    )
+
+    assert ChaoxingTaskDetector(browser).detect() is TaskType.UNKNOWN
+
+    assert "reason=unsupported_module_type stage=module_classification module_index=0" in caplog.text
+    assert (
+        "module_kind=audio module_index=0 module_count=2 has_job_icon=False finished=False" in caplog.text
+    )
+    assert "example.test" not in caplog.text
+    assert "PRIVATE" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("module_url", "expected_kind"),
+    [
+        ("/ananas/modules/ppt/index.html?token=PRIVATE", "ppt"),
+        ("/ananas/modules/PRIVATE/index.html", "unrecognized_kind"),
+        ("/ananas/modules/PRIVATE_audio/index.html", "unrecognized_kind"),
+        ("/ananas/modules/audio?token=PRIVATE", "audio"),
+        ("/other/PRIVATE?route=/ananas/modules/audio/", "unrecognized_route"),
+    ],
+)
+def test_unsupported_module_kind_diagnostic_uses_only_allowlisted_path_labels(
+    module_url: str, expected_kind: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    browser = _browser_with_modules(_module(module_url, has_job_icon=True))
+
+    assert ChaoxingTaskDetector(browser).detect() is TaskType.UNKNOWN
+
+    assert (
+        f"module_kind={expected_kind} module_index=0 module_count=1 has_job_icon=True finished=False"
+        in caplog.text
+    )
+    assert "PRIVATE" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("module", "stage"),
+    [
+        (_module(None), "module_parsing"),
+        (_module("/ananas/modules/pdf/index.html", object_id=""), "document_parsing"),
+    ],
+)
+def test_malformed_module_logs_parsing_stage(
+    module: dict[str, Any], stage: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+
+    assert ChaoxingTaskDetector(_browser_with_modules(module)).detect() is TaskType.UNKNOWN
+
+    assert f"reason=malformed_state stage={stage} module_index=0" in caplog.text
+
+
+def test_malformed_frame_logs_card_parsing_stage(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG)
+    browser = FakeBrowser(frame_evaluation_results=({"frame_url": None},))
+
+    assert ChaoxingTaskDetector(browser).detect() is TaskType.UNKNOWN
+
+    assert "reason=malformed_state stage=card_parsing" in caplog.text
+
+
+def test_browser_failure_diagnostic_omits_exception_text(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG)
+    browser = FakeBrowser(observation_error=BrowserError("Cookie=PRIVATE api_key=SECRET page body"))
+
+    assert ChaoxingTaskDetector(browser).detect() is TaskType.UNKNOWN
+
+    assert "reason=dom_inspection_failed stage=frame_evaluation" in caplog.text
+    assert "PRIVATE" not in caplog.text
+    assert "SECRET" not in caplog.text
+    assert "page body" not in caplog.text
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_video_observation_change_logs_transient_reason(
+    missing: bool, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    state = ChaoxingPageState(
+        content_frame_url=_CONTENT_URL,
+        knowledge_id=None,
+        active_tab_index=0,
+        has_next_tab=False,
+        modules=() if missing else (ChaoxingModuleState("https://example.test/changed", False, False),),
+        videos=(),
+    )
+    monkeypatch.setattr("linkforge.platforms.chaoxing.task_detector.inspect_chaoxing_page", lambda _: state)
+    detector = ChaoxingTaskDetector(
+        _browser_with_modules(_module("/ananas/modules/video/index.html")), video_session=VideoSession()
+    )
+
+    assert detector.detect() is TaskType.UNKNOWN
+
+    reason = "module_missing_between_observations" if missing else "module_changed_between_observations"
+    assert f"reason={reason} stage=video_session_inspection module_index=0" in caplog.text
+    assert "example.test" not in caplog.text
+
+
+def test_secondary_inspection_failure_logs_stage_without_exception_details(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+
+    def fail_inspection(_: object) -> ChaoxingPageState:
+        raise ChaoxingInspectionError("https://example.test/course?token=PRIVATE")
+
+    monkeypatch.setattr("linkforge.platforms.chaoxing.task_detector.inspect_chaoxing_page", fail_inspection)
+    detector = ChaoxingTaskDetector(
+        _browser_with_modules(_module("/ananas/modules/video/index.html")), video_session=VideoSession()
+    )
+
+    assert detector.detect() is TaskType.UNKNOWN
+
+    assert "reason=page_state_inspection_failed stage=video_session_inspection" in caplog.text
+    assert "PRIVATE" not in caplog.text
 
 
 def test_detector_implements_application_contract_without_llm() -> None:

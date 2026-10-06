@@ -69,7 +69,7 @@ class LinkForgeApplication:
 
             with browser:
                 logger.info("Browser started")
-                browser.open(self._config.course_url)
+                browser.open_for_readiness(self._config.course_url)
                 logger.debug("Course page opened")
                 if not self._platform.prepare(
                     browser=browser,

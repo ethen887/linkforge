@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, replace
 from typing import Any
 
+from linkforge.browser.base import Browser
+from linkforge.platforms.chaoxing.innerbook import InnerbookViewer, is_innerbook
+from linkforge.platforms.chaoxing.innerbook_dom import INNERBOOK_VIEWER_SCRIPT
 from linkforge.platforms.chaoxing.models import (
     ChaoxingDocumentModuleState,
     ChaoxingDocumentViewerState,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +23,9 @@ class ChaoxingDocumentInspection:
 
     modules: tuple[dict[str, object], ...]
     viewers: dict[str, ChaoxingDocumentViewerState]
+    content_frame_url: str = ""
+    innerbook_viewers: tuple[InnerbookViewer, ...] = ()
+    handled_video_indices: frozenset[int] = frozenset()
 
 
 def parse_document_inspection(
@@ -52,6 +61,19 @@ def parse_document_inspection(
             viewers[viewer.object_id] = viewer
 
     if active_tab_count != 1 or len(content_frames) != 1:
+        reason = (
+            "ambiguous_card_state"
+            if active_tab_count > 1 or len(content_frames) > 1
+            else "incomplete_card_state"
+        )
+        logger.debug(
+            "Chaoxing UNKNOWN: reason=%s stage=card_structure frame_count=%d "
+            "active_tab_count=%d content_frame_count=%d",
+            reason,
+            len(frame_results),
+            active_tab_count,
+            len(content_frames),
+        )
         return None
 
     raw_modules = content_frames[0].get("modules")
@@ -63,7 +85,25 @@ def parse_document_inspection(
             raise ValueError("every Chaoxing module state must be an object")
         modules.append(raw_module)
 
-    return ChaoxingDocumentInspection(modules=tuple(modules), viewers=viewers)
+    return ChaoxingDocumentInspection(
+        modules=tuple(modules), viewers=viewers, content_frame_url=content_frames[0]["frame_url"]
+    )
+
+
+def inspect_innerbook_viewers(
+    browser: Browser, inspection: ChaoxingDocumentInspection
+) -> ChaoxingDocumentInspection:
+    """Add book-reader state only when the current card contains innerbooks."""
+    if not any(is_innerbook(parse_module_basics(module)[0]) for module in inspection.modules):
+        return inspection
+    viewers = []
+    for result in browser.evaluate_in_frames(INNERBOOK_VIEWER_SCRIPT):
+        if not isinstance(result, dict):
+            raise ValueError("innerbook frame inspection must be an object")
+        raw = result.get("innerbook_viewer")
+        if raw is not None:
+            viewers.append(InnerbookViewer.from_raw(raw))
+    return replace(inspection, innerbook_viewers=tuple(viewers))
 
 
 def parse_module_basics(raw_module: dict[str, object]) -> tuple[str, bool, bool]:

@@ -1,6 +1,7 @@
 """Question-scoped inspection and idempotent normal UI option selection."""
 
 import json
+import logging
 import time
 from collections.abc import Callable
 
@@ -27,6 +28,7 @@ QUESTION_SELECTOR = ".TiMu.newTiMu"
 _CONTROLS = '[role="radio"], [role="checkbox"], input[type="radio"], input[type="checkbox"]'
 # A role wrapper with a native input is one option, not two.
 OPTION_SELECTOR = f":is({_CONTROLS}):not(:is({_CONTROLS}) :is({_CONTROLS}))"
+logger = logging.getLogger(__name__)
 _QUESTION_SCRIPT = r"""element => ({
     title: element.querySelector('.Zy_TItle')?.textContent || '',
     hidden_answers: Array.from(element.querySelectorAll('input[type="hidden"]'))
@@ -40,9 +42,18 @@ _OPTION_SCRIPT = """element => {
         'input[type="radio"],input[type="checkbox"]'
     );
     const aria = element.getAttribute('aria-checked');
+    const kind = element.getAttribute('role') || input?.type || '';
+    const markers = element.querySelectorAll(kind === 'checkbox' ? '.num_option_dx' : '.num_option');
+    const marker = markers.length === 1 ? markers[0] : null;
+    const value = marker?.getAttribute('data');
     const question = element.closest('.TiMu.newTiMu');
     return {
-        kind: element.getAttribute('role') || input?.type || '',
+        kind: kind,
+        marker_count: markers.length,
+        marker_checked: marker ? marker.classList.contains(
+            kind === 'checkbox' ? 'check_answer_dx' : 'check_answer'
+        ) : null,
+        marker_value: value && /^(?:[A-Z]|true|false)$/.test(value) ? value : null,
         aria: aria,
         checked: input ? input.checked : null,
         index: question ? Array.from(question.querySelectorAll(SELECTOR)).indexOf(element) : -1,
@@ -60,6 +71,7 @@ class QuizDOMQuestion:
         self.options = dict(zip(option_letters(len(nodes := element.query_all(OPTION_SELECTOR))), nodes))
         states = self._option_states()
         self.roles = tuple(state["kind"] for state in states)
+        self.marker_values = tuple(state.get("marker_value") for state in states)
         self.hint = parse_question_type(self._metadata()["title"], self.roles)
 
     def _metadata(self) -> dict:
@@ -87,6 +99,9 @@ class QuizDOMQuestion:
                 or raw.get("count") != len(self.options)
                 or raw.get("aria") not in (None, "true", "false")
                 or (raw.get("checked") is not None and type(raw.get("checked")) is not bool)
+                or raw.get("marker_count", 0) not in (0, 1)
+                or (raw.get("marker_checked") is not None and type(raw["marker_checked"]) is not bool)
+                or (raw.get("marker_count", 0) == 1 and raw.get("marker_checked") is None)
             ):
                 raise ChaoxingQuizStateError("Options changed or have unsupported selection semantics.")
             states.append(raw)
@@ -105,13 +120,28 @@ class QuizDOMQuestion:
         states = self._option_states()
         if tuple(state["kind"] for state in states) != self.roles:
             raise ChaoxingQuizStateError("Option control types changed during answering.")
+        if tuple(state.get("marker_value") for state in states) != self.marker_values:
+            raise ChaoxingQuizStateError("Option answer mapping changed during answering.")
         hidden_values = self._metadata()["hidden_answers"]
         hidden = hidden_values[0] if hidden_values else None
         radio = question_type is not QuizQuestionType.MULTIPLE_CHOICE
-        # Only the observed single-letter radio encoding is interpreted. Never
-        # infer checkbox selections from an undocumented hidden-value encoding.
+        # Interpret multi-answer and boolean encodings only with the observed
+        # Chaoxing marker/data contract; unrelated hidden fields remain opaque.
         hidden_selected = None
-        if radio and hidden is not None and (hidden == "" or hidden in self.options):
+        marker_mapping = all(state.get("marker_count", 0) == 1 for state in states)
+        if marker_mapping and hidden is not None:
+            values = self.marker_values
+            if values == tuple(self.options):
+                if len(set(hidden)) != len(hidden) or not set(hidden) <= set(self.options):
+                    raise ChaoxingQuizStateError("Unsupported hidden answer encoding.")
+                hidden_selected = set(hidden)
+            elif radio and len(values) == 2 and set(values) == {"true", "false"}:
+                if hidden not in ("", "true", "false"):
+                    raise ChaoxingQuizStateError("Unsupported boolean answer encoding.")
+                hidden_selected = {letter for letter, value in zip(self.options, values) if value == hidden}
+            else:
+                raise ChaoxingQuizStateError("Unsupported option answer mapping.")
+        elif radio and hidden is not None and (hidden == "" or hidden in self.options):
             hidden_selected = {hidden} if hidden else set()
         selected = set()
         for letter, state in zip(self.options, states):
@@ -120,9 +150,23 @@ class QuizDOMQuestion:
                 signals.append(state["aria"] == "true")
             if state["checked"] is not None:
                 signals.append(state["checked"])
+            if state.get("marker_checked") is not None:
+                signals.append(state["marker_checked"])
             if hidden_selected is not None:
                 signals.append(letter in hidden_selected)
             if not signals or len(set(signals)) != 1:
+                logger.debug(
+                    "Chaoxing quiz selection unavailable: question_index=%d option=%s kind=%s "
+                    "reason=%s has_aria=%s has_native=%s has_marker=%s has_hidden_selection=%s",
+                    self.index,
+                    letter,
+                    state["kind"],
+                    "conflicting" if signals else "missing",
+                    state["aria"] is not None,
+                    state["checked"] is not None,
+                    state.get("marker_checked") is not None,
+                    hidden_selected is not None,
+                )
                 raise ChaoxingQuizStateError(f"Option {letter}: missing or conflicting selected state.")
             if signals[0]:
                 selected.add(letter)
