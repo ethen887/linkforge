@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTime, QTimer
-from PySide6.QtGui import QCloseEvent, QFontDatabase
+from PySide6.QtGui import QCloseEvent, QFontDatabase, QShowEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from linkforge.application import ApplicationConfig
 from linkforge.composition import create_application
 from linkforge.config import MODEL_PROVIDERS, BrowserConfig, ModelConfig, create_model_config
+from linkforge.ui.community import CommunityDialog
 from linkforge.ui.settings import UserSettings, UserSettingsStore
 from linkforge.ui.worker import ApplicationFactory, GuiLogHandler, RuntimeWorker
 
@@ -75,6 +76,8 @@ class MainWindow(QMainWindow):
         self._log_handler = GuiLogHandler()
         self._log_handler.emitter.message.connect(self._append_log)
         logging.getLogger("linkforge").addHandler(self._log_handler)
+        self.community_dialog = CommunityDialog(self)
+        self._community_reminder_scheduled = False
 
         self.setWindowTitle("LinkForge")
         self.resize(1000, 680)
@@ -203,6 +206,14 @@ class MainWindow(QMainWindow):
 
     def _build_controls(self) -> QHBoxLayout:
         layout = QHBoxLayout()
+        self.feedback_button = QPushButton("用户反馈")
+        self.feedback_button.setObjectName("feedbackButton")
+        self.feedback_button.clicked.connect(self.community_dialog.open_feedback)
+        self.development_button = QPushButton("参与开发")
+        self.development_button.setObjectName("developmentButton")
+        self.development_button.clicked.connect(self.community_dialog.open_repository)
+        layout.addWidget(self.feedback_button)
+        layout.addWidget(self.development_button)
         layout.addStretch()
         self.start_button = QPushButton("开始运行")
         self.start_button.setObjectName("startButton")
@@ -428,6 +439,16 @@ class MainWindow(QMainWindow):
             f"LinkForge 在执行课程任务时发生错误。\n\n{summary}\n\n错误类型：{error_type}",
         )
 
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        super().showEvent(event)
+        if not self._community_reminder_scheduled:
+            self._community_reminder_scheduled = True
+            QTimer.singleShot(0, self._show_community_reminder)
+
+    def _show_community_reminder(self) -> None:
+        if self.isVisible():
+            self.community_dialog.show()
+
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         if self._thread is not None:
             self._close_when_finished = True
@@ -436,4 +457,5 @@ class MainWindow(QMainWindow):
             return
         logging.getLogger("linkforge").removeHandler(self._log_handler)
         self._log_handler.close()
+        self.community_dialog.reject()
         event.accept()
