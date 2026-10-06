@@ -6,7 +6,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from linkforge.application.task_runner import TaskHandler, TaskType
 from linkforge.browser.base import Browser
@@ -45,6 +45,7 @@ class ChaoxingContentHandlerConfig:
 class _NextKnowledgeTarget:
     frame_url: str
     node_id: str
+    require_completed: bool = False
 
 
 class ChaoxingContentTaskHandler(TaskHandler):
@@ -64,6 +65,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
         self._config = config or ChaoxingContentHandlerConfig()
         self._sleep = sleep
         self._monotonic = monotonic
+        self._skipped_knowledge_ids: set[str] = set()
 
     def run(self) -> None:
         """Navigate one CONTENT step and return control to TaskRunner."""
@@ -79,8 +81,9 @@ class ChaoxingContentTaskHandler(TaskHandler):
         """
         Navigate one CONTENT step and return control to TaskRunner.
 
-        The initial page snapshot is used only for navigation metadata such as
-        the active card index and knowledgeId.
+        The initial snapshot provides navigation metadata and explicit catalog
+        completion evidence. A completed knowledge node bypasses remaining cards
+        only after fresh verification, including inside the eventual click.
 
         Whether navigation is still safe is determined separately through
         ChaoxingTaskDetector so ContentHandler shares exactly the same task
@@ -100,6 +103,20 @@ class ChaoxingContentTaskHandler(TaskHandler):
         initial_state = self._inspect_initial_state()
 
         self._assert_content_navigation_is_safe()
+
+        if initial_state.knowledge_completed:
+            fresh = self._inspect_initial_state()
+            if fresh.knowledge_id != initial_state.knowledge_id or not fresh.knowledge_completed:
+                raise ContentNavigationError("Catalog completion changed before navigation.")
+            knowledge_id = fresh.knowledge_id
+            if knowledge_id is None or knowledge_id in self._skipped_knowledge_ids:
+                raise ContentNavigationError(
+                    "Completed knowledge navigation repeated or lost its identity."
+                )
+            self._skipped_knowledge_ids.add(knowledge_id)
+            logger.info("Skipping completed Chaoxing knowledge node")
+            self._navigate_to_next_knowledge(fresh)
+            return
 
         if initial_state.has_next_tab:
             self._navigate_to_next_card(initial_state)
@@ -206,6 +223,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
             raise ContentNavigationError("The current Chaoxing content frame has no valid knowledgeId.")
 
         target = self._inspect_next_knowledge(knowledge_id)
+        target = replace(target, require_completed=initial_state.knowledge_completed)
 
         self._click_next_knowledge(
             knowledge_id,
@@ -220,7 +238,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
             if (
                 current_state is not None
                 and current_state.knowledge_id is not None
-                and current_state.knowledge_id != knowledge_id
+                and f"cur{current_state.knowledge_id}" == target.node_id
             ):
                 return
 
@@ -444,6 +462,7 @@ def _click_next_knowledge_script(
     frame_url = _js_string(target.frame_url)
 
     expected_next_id = _js_string(target.node_id)
+    require_completed = json.dumps(target.require_completed)
 
     return f"""() => {{
         const currentFrameUrl =
@@ -489,6 +508,17 @@ def _click_next_knowledge_script(
             !next
             || next.id !== {expected_next_id}
             || !target
+            || nodes.filter(node => node.id === {current_id}).length !== 1
+            || nodes.filter(node => node.id === {expected_next_id}).length !== 1
+            || ({require_completed} && (
+                nodes.filter(node => node.classList.contains("posCatalog_active")).length !== 1
+                || !nodes[currentIndex].classList.contains("posCatalog_active")
+                || nodes[currentIndex].querySelectorAll(":scope > .icon_Completed").length !== 1
+                || !Array.from(nodes[currentIndex].querySelectorAll(":scope > .icon_Completed"))
+                    .every(marker => marker.getClientRects().length > 0
+                        && getComputedStyle(marker).visibility !== "hidden")
+                || nodes[currentIndex].querySelectorAll(":scope > .catalog_points_yi").length !== 0
+            ))
         ) {{
             return {{
                 frame_url: currentFrameUrl,

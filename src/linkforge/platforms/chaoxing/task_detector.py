@@ -6,6 +6,7 @@ from urllib.parse import urljoin, urlsplit
 from linkforge.application.task_runner import TaskDetector, TaskType
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserError
+from linkforge.platforms.chaoxing.catalog import knowledge_is_completed
 from linkforge.platforms.chaoxing.comment_state import (
     COMMENT_MODULE_PATH,
     CommentIdentityError,
@@ -79,6 +80,11 @@ class ChaoxingTaskDetector(TaskDetector):
 
             if inspection is None:
                 return self._unknown("course_state_unavailable", stage=stage)
+
+            stage = "catalog_completion"
+            if knowledge_is_completed(frame_results, inspection.content_frame_url):
+                logger.debug("Chaoxing completed knowledge: source=catalog_check; advancing to next node")
+                return TaskType.CONTENT
 
             book_inspected = False
             for module_index, raw_module in enumerate(inspection.modules):
