@@ -466,3 +466,64 @@ def test_handler_implements_platform_neutral_application_contract() -> None:
     handler = _handler(ScriptedContentBrowser([_state(has_next=True)]), FakeClock())
 
     assert isinstance(handler, TaskHandler)
+
+
+def _completed_state(**kwargs: object) -> tuple[object, ...]:
+    state = _state(**kwargs)
+    state[0]["catalog"] = [{"node_id": "cur100", "active": True, "completed_count": 1, "pending_count": 0}]
+    return state
+
+
+def test_completed_node_skips_remaining_cards_and_handlers() -> None:
+    initial = _completed_state(
+        has_next=True,
+        modules=[
+            {
+                "module_url": "/ananas/modules/work/",
+                "has_job_icon": False,
+                "finished": False,
+            }
+        ],
+    )
+    browser = _cross_knowledge_browser([initial, initial, initial, _state(knowledge_id="200")])
+    _handler(browser, FakeClock()).run()
+    assert browser.action_calls == []
+    assert len(browser.tree_calls) == 2
+    assert 'querySelectorAll(":scope > .icon_Completed")' in browser.tree_calls[-1]
+
+
+def test_completion_removed_before_navigation_prevents_click() -> None:
+    initial = _completed_state()
+    browser = _cross_knowledge_browser([initial, initial, _state()])
+    with pytest.raises(ContentNavigationError, match="completion changed"):
+        _handler(browser, FakeClock()).run()
+    assert browser.tree_calls == []
+
+
+def test_completed_node_cycle_fails_before_second_click() -> None:
+    initial = _completed_state()
+    browser = _cross_knowledge_browser([initial, initial, initial, _state(knowledge_id="200")])
+    handler = _handler(browser, FakeClock())
+    handler.run()
+    browser._states = [initial]
+    browser._state_index = 0
+    with pytest.raises(ContentNavigationError, match="repeated"):
+        handler.run()
+    assert len(browser.tree_calls) == 2
+
+
+def test_navigation_to_wrong_knowledge_node_does_not_succeed() -> None:
+    browser = _cross_knowledge_browser([_state(), _state(knowledge_id="300")])
+    with pytest.raises(ContentNavigationError, match="deadline"):
+        _handler(browser, FakeClock()).run()
+
+
+def test_completed_final_node_does_not_guess_whole_course_completion() -> None:
+    initial = _completed_state()
+    browser = _cross_knowledge_browser(
+        [initial], inspection_results=(_tree_inspection(has_next=False, target_found=False, next_id=None),)
+    )
+    with pytest.raises(ContentNavigationError, match="completion is not yet evidenced"):
+        _handler(browser, FakeClock()).run()
+    assert len(browser.tree_calls) == 1
+    assert browser.action_calls == []

@@ -50,6 +50,7 @@ class ChaoxingPageState:
     has_next_tab: bool
     modules: tuple[ChaoxingModuleState, ...]
     videos: tuple[ChaoxingVideoState, ...]
+    knowledge_completed: bool = False
 
 
 @dataclass(frozen=True, slots=True)

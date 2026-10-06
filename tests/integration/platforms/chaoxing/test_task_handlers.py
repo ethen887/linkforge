@@ -272,11 +272,13 @@ def test_content_handler_advances_to_next_knowledge_in_document_order() -> None:
     )
     page_html = f"""
         <ul id="prev_tab"><li class="active">Only card</li></ul>
-        <div class="posCatalog_select" id="cur100">
+        <div class="posCatalog_select posCatalog_active" id="cur100">
             <span class="posCatalog_name">Knowledge 100</span>
         </div>
         <div class="posCatalog_select" id="cur200">
             <span class="posCatalog_name" onclick="
+                document.getElementById('cur100').classList.remove('posCatalog_active');
+                document.getElementById('cur200').classList.add('posCatalog_active');
                 document.getElementById('content').src = '{second_content_url}';
             ">Knowledge 200</span>
         </div>

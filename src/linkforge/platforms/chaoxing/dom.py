@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserError
+from linkforge.platforms.chaoxing.catalog import CATALOG_STATE_SCRIPT, knowledge_is_completed
 from linkforge.platforms.chaoxing.exceptions import ChaoxingInspectionError
 from linkforge.platforms.chaoxing.models import (
     ChaoxingModuleState,
@@ -39,6 +40,7 @@ FRAME_PATH_SCRIPT = """
 CHAOXING_STATE_SCRIPT = (
     """() => {"""
     + FRAME_PATH_SCRIPT
+    + CATALOG_STATE_SCRIPT
     + """
     const frameUrl = window.location.href;
     const activeTabs = Array.from(document.querySelectorAll("#prev_tab li.active"));
@@ -111,6 +113,7 @@ CHAOXING_STATE_SCRIPT = (
 
     return {
         frame_url: frameUrl,
+        catalog,
         frame_path: framePath,
         active_tab_count: activeTabs.length,
         active_tab_index: activeTabIndex,
@@ -126,6 +129,7 @@ CHAOXING_STATE_SCRIPT = (
 CHAOXING_CARD_STATE_SCRIPT = (
     "() => {"
     + FRAME_PATH_SCRIPT
+    + CATALOG_STATE_SCRIPT
     + r"""
     const findValue = (value, keys) => {
         if (!value || typeof value !== "object") {
@@ -345,6 +349,7 @@ CHAOXING_CARD_STATE_SCRIPT = (
 
     return {
         frame_url: frameUrl,
+        catalog,
         active_tab_count: activeTabCount,
         modules,
         viewer,
@@ -431,6 +436,11 @@ def inspect_chaoxing_page(
 
     content_frame_url, modules = content_frames[0]
 
+    try:
+        completed = knowledge_is_completed(frame_results, content_frame_url)
+    except ValueError as exc:
+        raise ChaoxingInspectionError("Catalog completion state is inconsistent.") from exc
+
     return ChaoxingPageState(
         content_frame_url=content_frame_url,
         knowledge_id=_parse_knowledge_id(content_frame_url),
@@ -438,6 +448,7 @@ def inspect_chaoxing_page(
         has_next_tab=has_next_tab,
         modules=modules,
         videos=tuple(videos),
+        knowledge_completed=completed,
     )
 
 
