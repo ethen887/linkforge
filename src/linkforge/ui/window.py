@@ -7,8 +7,8 @@ from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, QTime, QTimer
-from PySide6.QtGui import QCloseEvent, QFontDatabase, QShowEvent
+from PySide6.QtCore import Qt, QThread, QTime, QTimer, QUrl
+from PySide6.QtGui import QCloseEvent, QDesktopServices, QFontDatabase, QShowEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -30,7 +30,7 @@ from linkforge.application import ApplicationConfig
 from linkforge.composition import create_application
 from linkforge.config import MODEL_PROVIDERS, BrowserConfig, ModelConfig, create_model_config
 from linkforge.ui.community import CommunityDialog
-from linkforge.ui.settings import UserSettings, UserSettingsStore
+from linkforge.ui.settings import UserSettings, UserSettingsStore, default_profile_dir
 from linkforge.ui.worker import ApplicationFactory, GuiLogHandler, RuntimeWorker
 
 logger = logging.getLogger(__name__)
@@ -64,11 +64,13 @@ class MainWindow(QMainWindow):
         application_factory: ApplicationFactory = create_application,
         error_presenter: Callable[[str, str], None] | None = None,
         settings_store: UserSettingsStore | None = None,
+        log_dir: Path | None = None,
     ) -> None:
         super().__init__()
         self._application_factory = application_factory
         self._settings_store = settings_store if settings_store is not None else UserSettingsStore()
         self._error_presenter = error_presenter or self._show_error_dialog
+        self._log_dir = log_dir
         self._state = RuntimeState.IDLE
         self._thread: QThread | None = None
         self._worker: RuntimeWorker | None = None
@@ -185,7 +187,7 @@ class MainWindow(QMainWindow):
         profile_widget.setLayout(profile_layout)
         profile_form = QFormLayout()
         profile_form.addRow("浏览器用户目录", profile_widget)
-        help_label = QLabel("用于保存学习通登录状态，下次运行无需重新登录。")
+        help_label = QLabel("用于保存学习通登录状态；登录过期时需要重新登录。")
         help_label.setStyleSheet("color: #606770;")
         layout.addWidget(browser_heading)
         layout.addLayout(profile_form)
@@ -234,6 +236,10 @@ class MainWindow(QMainWindow):
         clear_button.clicked.connect(self._clear_log)
         header.addWidget(heading)
         header.addStretch()
+        self.open_logs_button = QPushButton("打开日志文件夹")
+        self.open_logs_button.setEnabled(self._log_dir is not None)
+        self.open_logs_button.clicked.connect(self._open_log_directory)
+        header.addWidget(self.open_logs_button)
         header.addWidget(clear_button)
         self.log_edit = QTextEdit()
         self.log_edit.setObjectName("runtimeLogEdit")
@@ -267,7 +273,7 @@ class MainWindow(QMainWindow):
     def _restore_settings(self) -> None:
         settings = self._settings_store.load()
         self.course_url_edit.setText(settings.course_url)
-        self.profile_dir_edit.setText(settings.profile_dir)
+        self.profile_dir_edit.setText(settings.profile_dir or default_profile_dir())
         index = self.provider_combo.findData(settings.provider)
         if index >= 0:
             self.provider_combo.blockSignals(True)
@@ -431,6 +437,16 @@ class MainWindow(QMainWindow):
 
     def _clear_log(self) -> None:
         self.log_edit.clear()
+
+    def _open_log_directory(self) -> None:
+        if self._log_dir is None:
+            return
+        try:
+            opened = QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._log_dir.resolve())))
+        except Exception:
+            opened = False
+        if not opened:
+            QMessageBox.warning(self, "无法打开日志文件夹", f"请手动打开以下目录：\n{self._log_dir}")
 
     def _show_error_dialog(self, error_type: str, summary: str) -> None:
         QMessageBox.critical(
