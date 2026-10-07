@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 from pathlib import Path
 
 import pytest
 
 from linkforge.log import setup_logging
+from linkforge.log.config import _default_log_dir
 
 
 @pytest.fixture(autouse=True)
@@ -72,3 +74,17 @@ def test_setup_logging_is_idempotent_and_does_not_duplicate_records(tmp_path: Pa
     assert first_path == second_path
     assert len(owned_handlers) == 1
     assert first_path.read_text(encoding="utf-8").count("written exactly once") == 1
+
+
+def test_frozen_logs_follow_executable_not_working_directory(tmp_path, monkeypatch):
+    executable = tmp_path / "中文 Portable" / "LinkForge.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(executable))
+    monkeypatch.chdir(tmp_path)
+    log_file = setup_logging()
+    assert log_file.parent == executable.parent / "logs"
+
+
+def test_source_log_location_is_unchanged(monkeypatch):
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    assert _default_log_dir() == Path(__file__).resolve().parents[3] / "logs"

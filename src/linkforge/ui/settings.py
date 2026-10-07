@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, fields
+from pathlib import Path
 from typing import Protocol
 
 import keyring
 from keyring.backend import KeyringBackend
 from keyring.backends.chainer import ChainerBackend
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, QStandardPaths
 
 from linkforge.config import MODEL_PROVIDERS
 
@@ -23,6 +24,14 @@ _NATIVE_BACKEND_MODULES = {
     "keyring.backends.SecretService",
     "keyring.backends.kwallet",
 }
+
+
+def default_profile_dir() -> str:
+    """Keep browser identity outside the replaceable portable application folder."""
+    root = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.GenericDataLocation)
+    if not root:
+        raise RuntimeError("Local application data directory is unavailable.")
+    return str(Path(root) / "LinkForge" / "browser-profile")
 
 
 @dataclass(slots=True, repr=False)

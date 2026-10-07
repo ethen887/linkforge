@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linkforge"
-version = "0.1.0"
+version = "0.1.0b1"
 description = "Browser agent framework with explicit observation, decision, and action boundaries"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,6 +27,7 @@ dev = [
     "pytest-cov>=4.0",
     "ruff>=0.1.0",
     "mypy>=1.0",
+    "pyinstaller>=6.22.3",
 ]
 
 [tool.setuptools.packages.find]

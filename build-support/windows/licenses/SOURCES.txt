@@ -1,0 +1,22 @@
+License texts copied verbatim from upstream:
+
+LGPL-3.0-only.txt and GPL-3.0-only.txt:
+https://github.com/qt/qtbase/tree/v6.11.2/LICENSES
+Qt/PySide6 are used under their available open-source license terms.
+The commercial-license notice from the wheels is retained as upstream metadata;
+its inclusion does not claim a commercial Qt license for LinkForge.
+Qt/PySide6 source and copyright attribution:
+https://code.qt.io/cgit/qt/qtbase.git/tree/?h=v6.11.2
+https://code.qt.io/cgit/pyside/pyside-setup.git/tree/?h=v6.11.2
+The bundled Qt libraries are unmodified shared libraries. Users may replace
+them with compatible modified libraries and debug those modifications.
+LinkForge application source and build instructions:
+https://github.com/ethen887/linkforge
+
+Python-3.12.13-LICENSE.txt:
+https://github.com/python/cpython/blob/v3.12.13/LICENSE
+Supplemental Python 3.12 license text. The build inventory records the actual
+interpreter version; an installed interpreter license is also copied when available.
+
+Playwright and Node.js license notices remain in _internal/playwright/driver.
+Chromium includes its upstream notices in the bundled browser directory.

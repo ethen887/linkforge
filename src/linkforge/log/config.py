@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -49,6 +50,8 @@ def setup_logging(*, log_dir: Path | None = None) -> Path:
 
 
 def _default_log_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "logs"
     return Path(__file__).resolve().parents[3] / "logs"
 
 

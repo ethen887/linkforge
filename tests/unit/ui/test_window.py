@@ -269,7 +269,8 @@ def test_first_launch_preserves_default_model_and_empty_key(
     try:
         provider = window.provider_combo.currentData()
         assert window.model_edit.text() == MODEL_PROVIDERS[provider]["default_model"]
-        assert window.course_url_edit.text() == window.profile_dir_edit.text() == ""
+        assert window.course_url_edit.text() == ""
+        assert window.profile_dir_edit.text().endswith("browser-profile")
         assert window.api_key_edit.text() == ""
     finally:
         window.close()
