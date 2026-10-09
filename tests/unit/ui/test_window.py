@@ -202,10 +202,10 @@ def test_worker_error_is_visible_and_api_key_is_redacted(
 
     _wait_until(qt_application, lambda: window._thread is None)
     assert window.state is RuntimeState.ERROR
-    assert presented and presented[0][0] == "RuntimeError"
+    assert presented and presented[0][0] == "运行异常"
     visible_text = f"{presented!r}\n{window.log_edit.toPlainText()}"
     assert api_key not in visible_text
-    assert "[已隐藏]" in presented[0][1]
+    assert "尚未分类" in presented[0][1]
     assert window.start_button.isEnabled()
 
     window.close()

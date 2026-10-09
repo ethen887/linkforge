@@ -21,6 +21,7 @@ from linkforge.browser.exceptions import (
 )
 from linkforge.browser.models import BrowserPage
 from linkforge.llm.base import LLM, LLMMessage
+from linkforge.llm.errors import ModelRequestError, model_failure_reason
 from linkforge.platforms.chaoxing.comment_state import (
     COMMENT_MODULE_PATH,
     CommentIdentity,
@@ -92,10 +93,13 @@ class LLMCommentBodyGenerator:
         try:
             response = self._llm.call_model(self._model, messages, [])
         except Exception as exc:
-            raise ChaoxingCommentGenerationError("The comment model request failed.") from exc
+            reason = model_failure_reason(exc)
+            raise ChaoxingCommentGenerationError(f"讨论内容生成失败：{reason}") from ModelRequestError(
+                reason
+            )
         content = response.content
         if not isinstance(content, str):
-            raise ChaoxingCommentGenerationError("The comment model returned no text.")
+            raise ChaoxingCommentGenerationError("讨论内容生成失败：模型没有返回文字内容。")
         return content
 
 
