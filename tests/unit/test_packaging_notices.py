@@ -1,5 +1,6 @@
 """Ensure duplicate editable metadata cannot break release assembly."""
 
+import os
 from importlib.metadata import PackagePath
 from types import SimpleNamespace
 
@@ -44,3 +45,20 @@ def test_build_environment_does_not_inherit_developer_dll_paths(tmp_path, monkey
     assert "QT_PLUGIN_PATH" not in env
     assert "PLAYWRIGHT_NODEJS_PATH" not in env
     assert env["PLAYWRIGHT_BROWSERS_PATH"] == "0"
+
+
+def test_build_environment_preserves_base_python_dll_directories(tmp_path, monkeypatch):
+    python_root = tmp_path / "conda-python"
+    dlls = python_root / "DLLs"
+    conda_dlls = python_root / "Library" / "bin"
+    dlls.mkdir(parents=True)
+    conda_dlls.mkdir(parents=True)
+    monkeypatch.setattr("scripts.build_windows.sys.base_prefix", str(python_root))
+    monkeypatch.setenv("SYSTEMROOT", str(tmp_path / "Windows"))
+    monkeypatch.setenv("PATH", "unrelated-conda-env")
+
+    paths = build_environment()["PATH"].split(os.pathsep)
+
+    assert str(dlls) in paths
+    assert str(conda_dlls) in paths
+    assert "unrelated-conda-env" not in paths

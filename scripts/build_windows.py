@@ -19,15 +19,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def build_environment() -> dict[str, str]:
-    """Do not resolve Qt/system DLLs from Conda or unrelated developer tools."""
+    """Resolve DLLs from this Python installation, never unrelated developer tools."""
     env = os.environ.copy()
     for name in ("PYTHONPATH", "PYTHONHOME", "QT_PLUGIN_PATH", "QML2_IMPORT_PATH"):
         env.pop(name, None)
     windows = Path(env["SYSTEMROOT"])
-    env["PATH"] = os.pathsep.join(
-        str(path)
-        for path in (Path(sys.executable).parent, Path(sys.base_prefix), windows / "System32", windows)
+    python_root = Path(sys.base_prefix)
+    dll_paths = [Path(sys.executable).parent, python_root]
+    # A venv based on Conda still uses its base interpreter's OpenSSL DLLs.
+    # Keep that installation's native libraries when removing the inherited PATH.
+    dll_paths.extend(
+        path for path in (python_root / "DLLs", python_root / "Library" / "bin") if path.is_dir()
     )
+    dll_paths.extend((windows / "System32", windows))
+    env["PATH"] = os.pathsep.join(str(path) for path in dll_paths)
     env["PLAYWRIGHT_BROWSERS_PATH"] = "0"
     env.pop("PLAYWRIGHT_NODEJS_PATH", None)
     return env
@@ -111,6 +116,20 @@ def main() -> None:
     browser_root = bundle / "_internal/playwright/driver/package/.local-browsers"
     if not list(browser_root.glob("chromium-*/chrome-win64/chrome.exe")):
         raise RuntimeError("Bundled Chromium executable is missing")
+    # Exercise the frozen imports and bundled dependencies before creating a release ZIP.
+    subprocess.run(
+        [str(bundle / "LinkForge.exe"), "--self-test", str(stage / "package-check.json")],
+        check=True,
+        cwd=bundle,
+        env=env,
+        timeout=180,
+    )
+    # The frozen GUI writes diagnostic logs beside its executable; keep them out of the ZIP.
+    check_logs = (bundle / "logs").resolve()
+    if not check_logs.is_relative_to(stage.resolve()):
+        raise RuntimeError("Package-check logs resolved outside the build staging directory")
+    if check_logs.is_dir():
+        shutil.move(str(check_logs), str(stage / "package-check-logs"))
     shutil.copy2(ROOT / "LICENSE", bundle / "LICENSE.txt")
     shutil.copy2(ROOT / "build-support/windows/使用说明.txt", bundle / "使用说明.txt")
     collect_notices(bundle / "THIRD_PARTY_NOTICES")
