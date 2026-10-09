@@ -4,11 +4,19 @@ from anthropic import Anthropic
 from anthropic.types import MessageParam, TextBlock, ToolParam, ToolUseBlock
 
 from linkforge.llm.base import LLM, LLMMessage, LLMResponse, ToolCall
+from linkforge.llm.errors import ModelRequestError
+
+_MODEL_REQUEST_TIMEOUT_SECONDS = 120.0
 
 
 class AnthropicInterface(LLM):
     def __init__(self, api_key: str, base_url: str | None = None):
-        self.client = Anthropic(api_key=api_key, base_url=base_url)
+        self.client = Anthropic(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=_MODEL_REQUEST_TIMEOUT_SECONDS,
+            max_retries=0,
+        )
 
     def _convert_tool_calls(self, tool_calls: tuple[ToolCall, ...]) -> list[dict[str, Any]]:
         """Convert LinkForge tool calls to Anthropic tool-use blocks."""
@@ -153,21 +161,24 @@ class AnthropicInterface(LLM):
 
         anthropic_tools = self._convert_tools(tools)
 
-        if system_prompt:
-            message_t = self.client.messages.create(
-                model=model,
-                max_tokens=1024,
-                system=system_prompt,
-                messages=anthropic_messages,
-                tools=anthropic_tools,
-            )
-        else:
-            message_t = self.client.messages.create(
-                model=model,
-                max_tokens=1024,
-                messages=anthropic_messages,
-                tools=anthropic_tools,
-            )
+        try:
+            if system_prompt:
+                message_t = self.client.messages.create(
+                    model=model,
+                    max_tokens=1024,
+                    system=system_prompt,
+                    messages=anthropic_messages,
+                    tools=anthropic_tools,
+                )
+            else:
+                message_t = self.client.messages.create(
+                    model=model,
+                    max_tokens=1024,
+                    messages=anthropic_messages,
+                    tools=anthropic_tools,
+                )
+        except Exception as exc:
+            raise ModelRequestError.from_exception(exc) from exc
 
         text: str | None = None
         tool_calls: list[ToolCall] = []
@@ -188,4 +199,5 @@ class AnthropicInterface(LLM):
         return LLMResponse(
             content=text,
             tool_calls=tool_calls,
+            finish_reason=getattr(message_t, "stop_reason", None),
         )

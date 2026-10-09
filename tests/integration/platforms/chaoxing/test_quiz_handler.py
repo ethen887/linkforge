@@ -8,10 +8,12 @@ import pytest
 
 from linkforge.browser.exceptions import BrowserError
 from linkforge.browser.playwright import PlaywrightBrowser
+from linkforge.llm.base import LLMResponse
 from linkforge.platforms.chaoxing.exceptions import ChaoxingQuizStateError
 from linkforge.platforms.chaoxing.quiz_dom import QUESTION_FRAME_PATH, QUESTION_SELECTOR
 from linkforge.platforms.chaoxing.quiz_handler import ChaoxingQuizHandlerConfig, ChaoxingQuizTaskHandler
 from linkforge.platforms.chaoxing.quiz_models import QuizAnswer, QuizQuestionType
+from linkforge.platforms.chaoxing.quiz_solver import LLMQuizSolver, QuizResponseError
 
 
 def data_url(html, route):
@@ -157,6 +159,33 @@ def test_scope_does_not_retarget_replaced_question():
             elements[0].evaluate("e => e.replaceWith(e.cloneNode(true))")
             with pytest.raises(BrowserError, match="detached"):
                 elements[0].screenshot()
+
+
+@pytest.mark.parametrize(
+    "content", [None, "explanation", '{"question_type":"SINGLE_CHOICE","choices":["Z"]}']
+)
+def test_invalid_model_response_never_clicks_or_submits_in_real_browser(content):
+    url, _ = fixture_page()
+    requests = []
+    submissions = []
+
+    def call(*args):
+        requests.append(args)
+        return LLMResponse(content)
+
+    with PlaywrightBrowser(headless=True, timeout_ms=3_000) as browser:
+        browser.open(url)
+        handler = ChaoxingQuizTaskHandler(
+            browser,
+            solver=LLMQuizSolver(llm=SimpleNamespace(call_json_model=call), model="test"),
+            submitter=SimpleNamespace(submit=lambda *args, **kwargs: submissions.append(True)),
+        )
+        with pytest.raises(QuizResponseError, match="第 1 题"):
+            handler.run()
+        assert len(requests) == 2
+        assert not submissions
+        assert handler.last_answers == ()
+        assert not any(browser.evaluate_in_frames("() => window.clicks || null"))
 
 
 @pytest.mark.parametrize("unknown_heading", [False, True])

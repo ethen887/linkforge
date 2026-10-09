@@ -1,5 +1,6 @@
 """Quiz workflow behavior, using external-boundary fakes only."""
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -119,6 +120,19 @@ def make_handler(elements, answers, *, events=None, submitter=None):
     return handler, browser, module, questions
 
 
+def script_question_scopes(browser, snapshots):
+    original_scope = browser.element_scope
+
+    @contextmanager
+    def element_scope(*args, **kwargs):
+        if snapshots:
+            browser.scoped_elements = snapshots.pop(0)
+        with original_scope(*args, **kwargs) as elements:
+            yield elements
+
+    browser.element_scope = element_scope
+
+
 @pytest.mark.parametrize("kind,count", [(Q.SINGLE_CHOICE, 4), (Q.TRUE_FALSE, 2)])
 def test_initial_null_aria_uses_empty_hidden_and_switches_radio(kind, count):
     events = []
@@ -156,6 +170,122 @@ def test_questions_capture_solve_select_sequentially_and_mapping_is_local():
     assert events == ["capture:q1", "solve:q1", "click:q1:C", "capture:q2", "solve:q2", "click:q2:A"]
     assert one["selected"] == {"C"}
     assert two["selected"] == {"A"}
+
+
+def test_model_call_releases_scope_and_reacquires_replaced_question():
+    old_element, old_state = make_question()
+    fresh_element, fresh_state = make_question()
+    handler, browser, _, _ = make_handler(
+        [old_element],
+        [QuizAnswer(Q.SINGLE_CHOICE, ("B",))],
+    )
+
+    def solve(question):
+        assert browser.scope_closed
+        browser.scoped_elements = (fresh_element,)
+        return QuizAnswer(question.question_type, ("B",))
+
+    handler._solver = SimpleNamespace(solve=solve)
+    handler.answer_all()
+
+    assert old_state["selected"] == set()
+    assert fresh_state["selected"] == {"B"}
+    scope_calls = [call for call in browser.action_calls if call[0] == "element_scope"]
+    assert len(scope_calls) == 5
+
+
+def test_handler_waits_for_question_count_to_stabilize_before_model_calls():
+    early, early_state = make_question(name="early")
+    first, first_state = make_question(name="first")
+    second, second_state = make_question(Q.TRUE_FALSE, count=2, name="second")
+    handler, browser, _, questions = make_handler(
+        [early],
+        [QuizAnswer(Q.SINGLE_CHOICE, ("B",)), QuizAnswer(Q.TRUE_FALSE, ("A",))],
+    )
+    script_question_scopes(
+        browser,
+        [
+            (early,),
+            (first, second),
+            (first, second),
+        ],
+    )
+
+    handler.answer_all()
+
+    assert [question.index for question in questions] == [0, 1]
+    assert early_state["selected"] == set()
+    assert first_state["selected"] == {"B"}
+    assert second_state["selected"] == {"A"}
+
+
+def test_handler_opens_visible_chapter_quiz_entry_before_waiting_for_questions():
+    question, state = make_question()
+    handler, browser, _, _ = make_handler([question], [QuizAnswer(Q.SINGLE_CHOICE, ("B",))])
+    entry_events = []
+    entry = FakeDOMElement(
+        inspect=lambda: "章节测验",
+        events=entry_events,
+        name="chapter-quiz",
+    )
+    original_scope = browser.element_scope
+    question_scope_attempts = 0
+
+    @contextmanager
+    def element_scope(frame_url_contains, selector, *, ancestor_url):
+        nonlocal question_scope_attempts
+        if "doHomeWorkNew" in frame_url_contains:
+            question_scope_attempts += 1
+            if question_scope_attempts == 1:
+                raise BrowserError("Question iframe is not loaded yet")
+            with original_scope(frame_url_contains, selector, ancestor_url=ancestor_url) as elements:
+                yield elements
+            return
+        if frame_url_contains == MODULE:
+            previous_elements = browser.scoped_elements
+            browser.scoped_elements = (entry,)
+            try:
+                with original_scope(frame_url_contains, selector, ancestor_url=ancestor_url) as elements:
+                    yield elements
+            finally:
+                browser.scoped_elements = previous_elements
+            return
+        with original_scope(frame_url_contains, selector, ancestor_url=ancestor_url) as elements:
+            yield elements
+
+    browser.element_scope = element_scope
+
+    handler.answer_all()
+
+    assert entry_events == ["click:chapter-quiz"]
+    assert state["selected"] == {"B"}
+
+
+def test_handler_restarts_snapshot_before_first_answer_when_question_count_changes():
+    initial, initial_state = make_question(name="initial")
+    first, first_state = make_question(name="first")
+    second, second_state = make_question(Q.TRUE_FALSE, count=2, name="second")
+    handler, browser, _, questions = make_handler(
+        [initial],
+        [QuizAnswer(Q.SINGLE_CHOICE, ("B",)), QuizAnswer(Q.TRUE_FALSE, ("A",))],
+    )
+    script_question_scopes(
+        browser,
+        [
+            (initial,),
+            (initial,),
+            (first, second),
+            (first, second),
+            (first, second),
+        ],
+    )
+
+    handler.answer_all()
+
+    assert [question.index for question in questions] == [0, 1]
+    assert initial_state["selected"] == set()
+    assert first_state["selected"] == {"B"}
+    assert second_state["selected"] == {"A"}
 
 
 def test_run_without_submitter_explicitly_stops_before_submission():
@@ -344,13 +474,16 @@ def test_vision_solver_uses_image_and_metadata_without_dom_text(response):
 
     element, _ = make_question()
     handler, _, _, _ = make_handler([element], [])
-    handler._solver = LLMQuizSolver(llm=SimpleNamespace(call_model=call_model), model="vision-test")
+    handler._solver = LLMQuizSolver(
+        llm=SimpleNamespace(call_json_model=lambda model, messages: call_model(model, messages, [])),
+        model="vision-test",
+    )
     if response.content and response.content.startswith("{"):
         handler.answer_all()
     else:
         with pytest.raises(ChaoxingQuizAnswerError):
             handler.answer_all()
-    assert len(calls) == 1
+    assert len(calls) == (1 if response.content and response.content.startswith("{") else 2)
     model, messages, tools = calls[0]
     assert model == "vision-test" and tools == []
     assert messages[1].images[0].data == b"test-png"

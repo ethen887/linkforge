@@ -4,11 +4,26 @@ from typing import Any, cast
 from openai import OpenAI
 
 from linkforge.llm.base import LLM, LLMMessage, LLMResponse, ToolCall
+from linkforge.llm.errors import ModelRequestError
+
+_MODEL_REQUEST_TIMEOUT_SECONDS = 120.0
+_JSON_OBJECT_ENDPOINTS = {
+    "https://api.deepseek.com",
+    "https://api.openai.com/v1",
+    "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "https://generativelanguage.googleapis.com/v1beta/openai",
+}
 
 
 class OpenAIInterface(LLM):
     def __init__(self, api_key: str, base_url: str | None = None):
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=_MODEL_REQUEST_TIMEOUT_SECONDS,
+            max_retries=0,
+        )
 
     def _convert_tool_calls(self, tool_calls: tuple[ToolCall, ...]) -> list[dict[str, Any]]:
         """Convert LinkForge tool calls to OpenAI function tool-call format."""
@@ -86,12 +101,33 @@ class OpenAIInterface(LLM):
         tools: list[dict[str, Any]],
     ) -> LLMResponse:
         """Call an OpenAI-compatible model and normalize its response."""
+        return self._call(model, messages, tools)
+
+    def call_json_model(self, model: str, messages: list[LLMMessage]) -> LLMResponse:
+        # Deliberately endpoint-scoped: arbitrary OpenAI-compatible proxies do
+        # not necessarily implement response_format even when their protocol
+        # otherwise matches Chat Completions.
+        endpoint = str(self.client.base_url).rstrip("/")
+        return self._call(model, messages, [], json_object=endpoint in _JSON_OBJECT_ENDPOINTS)
+
+    def _call(
+        self,
+        model: str,
+        messages: list[LLMMessage],
+        tools: list[dict[str, Any]],
+        *,
+        json_object: bool = False,
+    ) -> LLMResponse:
         openai_messages = [self._convert_message(message) for message in messages]
-        messages_t = self.client.chat.completions.create(
-            model=model,
-            messages=cast(Any, openai_messages),
-            **({"tools": cast(Any, tools)} if tools else {}),
-        )
+        try:
+            messages_t = self.client.chat.completions.create(
+                model=model,
+                messages=cast(Any, openai_messages),
+                **({"tools": cast(Any, tools)} if tools else {}),
+                **({"response_format": cast(Any, {"type": "json_object"})} if json_object else {}),
+            )
+        except Exception as exc:
+            raise ModelRequestError.from_exception(exc) from exc
 
         response = messages_t.choices[0].message
         text = response.content
@@ -120,4 +156,5 @@ class OpenAIInterface(LLM):
         return LLMResponse(
             content=text,
             tool_calls=tool_calls,
+            finish_reason=getattr(messages_t.choices[0], "finish_reason", None),
         )

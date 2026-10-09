@@ -9,6 +9,7 @@ from threading import Lock
 from PySide6.QtCore import QObject, Signal, Slot
 
 from linkforge.application import ApplicationConfig, LinkForgeApplication
+from linkforge.ui.error_messages import user_error_message
 
 ApplicationFactory = Callable[[ApplicationConfig], LinkForgeApplication]
 
@@ -62,9 +63,10 @@ class RuntimeWorker(QObject):
             application.run()
         except BaseException as exc:
             error_type = type(exc).__name__
-            summary = _safe_error_summary(exc, self._config.model_config.api_key)
+            user_error = user_error_message(exc)
+            summary = _safe_error_summary(user_error.summary, self._config.model_config.api_key)
             logger.error("GUI worker stopped with %s", error_type)
-            self.failed.emit(error_type, summary)
+            self.failed.emit(user_error.category, summary)
         else:
             self.completed.emit()
         finally:
@@ -101,8 +103,7 @@ class GuiLogHandler(logging.Handler):
             self.handleError(record)
 
 
-def _safe_error_summary(exc: BaseException, api_key: str) -> str:
-    summary = str(exc).strip() or "运行过程中发生未提供详细说明的错误。"
+def _safe_error_summary(summary: str, api_key: str) -> str:
     if api_key:
         summary = summary.replace(api_key, "[已隐藏]")
     sensitive_markers = (

@@ -46,12 +46,23 @@ class LLMMessage:
 
 
 class LLMResponse:
-    def __init__(self, content: str | None = None, tool_calls: list[ToolCall] | None = None):
+    def __init__(
+        self,
+        content: str | None = None,
+        tool_calls: list[ToolCall] | None = None,
+        *,
+        finish_reason: str | None = None,
+    ):
         self.content = content
         self.tool_calls = tool_calls or []
+        self.finish_reason = finish_reason
 
 
 class LLM:
+    def call_json_model(self, model: str, messages: list[LLMMessage]) -> LLMResponse:
+        """Request JSON; adapters may constrain output when capability is known."""
+        return self.call_model(model, messages, [])
+
     def call_model(
         self,
         model: str,

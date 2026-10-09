@@ -452,7 +452,7 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(
             self,
             "运行出错",
-            f"LinkForge 在执行课程任务时发生错误。\n\n{summary}\n\n错误类型：{error_type}",
+            f"{error_type}\n\n{summary}\n\n详细技术信息已写入日志。",
         )
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
