@@ -1,9 +1,9 @@
 """Browser-neutral data models."""
 
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from typing import Literal
 
-InteractiveElementRole: TypeAlias = Literal["link", "button", "textbox"]
+type InteractiveElementRole = Literal["link", "button", "textbox"]
 
 
 @dataclass(frozen=True, slots=True)

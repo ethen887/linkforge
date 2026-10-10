@@ -50,7 +50,7 @@ LinkForge 是一个基于 Python、Playwright 和大模型的浏览器自动化�
 
 需要：
 
-- Python 3.11 或以上版本，当前 CI 使用 Python 3.12。
+- Python 3.12 或以上版本（CI 与本地 uv 环境均使用 3.12）。
 - Git 和 uv。
 - Playwright Chromium。
 - 可用的模型服务 API Key。

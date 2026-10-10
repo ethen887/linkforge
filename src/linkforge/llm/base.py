@@ -1,6 +1,6 @@
 import base64
 from dataclasses import dataclass, field
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal
 
 
 @dataclass
@@ -10,7 +10,7 @@ class ToolCall:
     arguments: dict
 
 
-MessageRole: TypeAlias = Literal["system", "user", "assistant", "tool"]
+type MessageRole = Literal["system", "user", "assistant", "tool"]
 
 
 @dataclass(frozen=True, slots=True)

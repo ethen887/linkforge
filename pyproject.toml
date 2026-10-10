@@ -7,7 +7,7 @@ name = "linkforge"
 version = "0.1.0b1"
 description = "Browser agent framework with explicit observation, decision, and action boundaries"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [
     { name = "LinkForge Contributors" }
@@ -40,13 +40,13 @@ addopts = "-v --tb=short"
 
 [tool.ruff]
 line-length = 108
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true

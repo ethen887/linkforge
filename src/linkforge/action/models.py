@@ -1,7 +1,6 @@
 """Action data models."""
 
 from dataclasses import dataclass
-from typing import TypeAlias
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,4 +40,4 @@ class ScrollAction:
     delta_y: int
 
 
-Action: TypeAlias = OpenAction | ClickAction | FillAction | PressAction | ScrollAction
+type Action = OpenAction | ClickAction | FillAction | PressAction | ScrollAction

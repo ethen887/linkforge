@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-LinkForge is a Python 3.10+ package using the `src/` layout. Application code lives in `src/linkforge/`: `agent/` contains Browser Agent contracts and orchestration, `browser/` browser adapters, `observation/` page-state capture, `action/` structured browser actions, `llm/` provider implementations, and `config/` settings. Keep new functionality inside the most specific existing module; add a small, focused module rather than growing unrelated files.
+LinkForge is a Python 3.12+ package using the `src/` layout. Application code lives in `src/linkforge/`: `agent/` contains Browser Agent contracts and orchestration, `browser/` browser adapters, `observation/` page-state capture, `action/` structured browser actions, `llm/` provider implementations, and `config/` settings. Keep new functionality inside the most specific existing module; add a small, focused module rather than growing unrelated files.
 
 Tests mirror product areas under `tests/unit/` and `tests/integration/`; browser integration coverage is in `tests/integration/browser/`. Put shared test doubles in `tests/fakes.py`. Repository and design notes are in `docu/`.
 
@@ -22,7 +22,7 @@ Run `uv run ruff format .` only when formatting intended changes. The CI workflo
 
 ## Coding Style & Naming Conventions
 
-Follow Ruff's 108-character line limit and Python 3.10-compatible syntax. Use four-space indentation, `snake_case` for modules/functions/variables, `PascalCase` for classes, and clear type annotations on public interfaces. Keep external services behind replaceable adapters (for example, browser and LLM implementations). Prefer deterministic rules over model decisions for predictable work. Do not commit API keys, cookies, tokens, passwords, or user data.
+Follow Ruff's 108-character line limit and Python 3.12-compatible syntax. Use four-space indentation, `snake_case` for modules/functions/variables, `PascalCase` for classes, and clear type annotations on public interfaces. Keep external services behind replaceable adapters (for example, browser and LLM implementations). Prefer deterministic rules over model decisions for predictable work. Do not commit API keys, cookies, tokens, passwords, or user data.
 
 ## Testing Guidelines
 
