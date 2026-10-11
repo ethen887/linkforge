@@ -26,7 +26,8 @@ def main() -> int:
             None,
             "无法创建运行日志",
             "LinkForge 无法创建或写入 logs 文件夹。\n"
-            "请将完整程序解压到有写入权限的目录（例如下载目录）后重试。",
+            "请检查日志目录的写入权限和磁盘空间。\n"
+            "安装版日志位于本机用户数据目录，便携版日志位于程序目录。",
         )
         return 1
     logger.info("GUI logging initialized: %s", log_file)

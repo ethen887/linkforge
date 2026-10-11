@@ -78,7 +78,7 @@ def collect_notices(destination: Path) -> None:
     )
 
 
-def main() -> None:
+def main() -> Path:
     if sys.platform != "win32" or platform.machine().lower() not in {"amd64", "x86_64"}:
         raise SystemExit("Build with Windows x64 and 64-bit Python.")
     if sys.maxsize <= 2**32:
@@ -161,6 +161,7 @@ def main() -> None:
     print(f"Candidate directory: {bundle}")
     print(f"Candidate ZIP: {archive}")
     print("Run the packaged --self-test and clean-Windows acceptance before publishing.")
+    return bundle
 
 
 if __name__ == "__main__":

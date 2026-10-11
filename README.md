@@ -14,6 +14,9 @@ LinkForge 是一个基于 Python、Playwright 和大模型的浏览器自动化�
 
 开发者构建和验收步骤见 [Windows 便携版构建与验收](docu/Windows便携版构建与验收.md)。
 
+中文 Setup 安装包的构建步骤见 [Windows 安装版构建与验收](docu/Windows安装版构建与验收.md)。
+安装版默认按当前用户安装，并将日志保存到 `%LOCALAPPDATA%\LinkForge\logs`。
+
 目前主要验证 Windows 桌面使用流程。自动化测试包含本地浏览器集成测试和 GUI 测试，但不代表所有课程页面、模型服务或桌面系统均已兼容。
 
 当前不保证任意学习通课程都能完整自动处理。遇到不支持的模块或无法确认的页面状态时，程序会停止并记录错误。

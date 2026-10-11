@@ -51,7 +51,15 @@ def setup_logging(*, log_dir: Path | None = None) -> Path:
 
 def _default_log_dir() -> Path:
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent / "logs"
+        application_dir = Path(sys.executable).resolve().parent
+        if (application_dir / "installed.ini").is_file():
+            from PySide6.QtCore import QStandardPaths
+
+            root = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.GenericDataLocation)
+            if not root:
+                raise OSError("Local application data directory is unavailable.")
+            return Path(root) / "LinkForge" / "logs"
+        return application_dir / "logs"
     return Path(__file__).resolve().parents[3] / "logs"
 
 
