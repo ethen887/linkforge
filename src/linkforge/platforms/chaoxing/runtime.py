@@ -29,10 +29,15 @@ class ChaoxingPlatformRuntime(PlatformRuntime):
     """Build the complete Chaoxing task runner from application-owned resources."""
 
     def __init__(
-        self, *, quiz_submitter: QuizSubmitter, startup_wait: ChaoxingStartupWait | None = None
+        self,
+        *,
+        quiz_submitter: QuizSubmitter,
+        startup_wait: ChaoxingStartupWait | None = None,
+        on_course_url_changed: Callable[[str], None] | None = None,
     ) -> None:
         self._quiz_submitter = quiz_submitter
         self._startup_wait = startup_wait or ChaoxingStartupWait()
+        self._on_course_url_changed = on_course_url_changed
         logger.debug("Chaoxing platform runtime created")
 
     def prepare(self, *, browser: Browser, course_url: str, should_stop: Callable[[], bool]) -> bool:
@@ -62,7 +67,9 @@ class ChaoxingPlatformRuntime(PlatformRuntime):
                 innerbook_session=innerbook_session,
                 video_session=video_session,
             ),
-            content_handler=ChaoxingContentTaskHandler(browser, detector=detector),
+            content_handler=ChaoxingContentTaskHandler(
+                browser, detector=detector, on_course_url_changed=self._on_course_url_changed
+            ),
             quiz_handler=ChaoxingQuizTaskHandler(
                 browser,
                 solver=quiz_solver,

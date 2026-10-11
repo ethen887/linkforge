@@ -125,6 +125,18 @@ class UserSettingsStore:
             logger.warning("GUI settings could not be saved; this run can continue.")
             return False
 
+    def save_course_url(self, course_url: str) -> bool:
+        """Persist a course checkpoint without rewriting other fields or credentials."""
+        try:
+            if self._settings is None:
+                return False
+            self._settings.setValue(_SETTINGS_PREFIX + "course_url", course_url)
+            self._settings.sync()
+            return self._settings.status() == QSettings.Status.NoError
+        except Exception:
+            logger.warning("Course progress could not be saved; this run can continue.")
+            return False
+
     def load_api_key(self, provider: str) -> str | None:
         """Read only this provider's credential; missing/deleted keys stay empty."""
         if provider not in MODEL_PROVIDERS:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from threading import Lock
 
 from PySide6.QtCore import QObject, Signal, Slot
@@ -40,6 +41,7 @@ class RuntimeWorker(QObject):
     completed = Signal()
     failed = Signal(str, str)
     finished = Signal()
+    course_url_changed = Signal(str)
 
     def __init__(self, config: ApplicationConfig, application_factory: ApplicationFactory) -> None:
         super().__init__()
@@ -53,7 +55,8 @@ class RuntimeWorker(QObject):
     def run(self) -> None:
         """Build and synchronously run the application on the owning worker thread."""
         try:
-            application = self._application_factory(self._config)
+            config = replace(self._config, on_course_url_changed=self.course_url_changed.emit)
+            application = self._application_factory(config)
             with self._lock:
                 self._application = application
                 stop_requested = self._stop_requested
@@ -156,6 +159,8 @@ def _user_message(record: logging.LogRecord) -> str | None:
 
     for module_suffix, display_name in _HANDLER_NAMES.items():
         if record.name.endswith(module_suffix):
+            if message == "Video stall recovery requested":
+                return "视频播放暂时停滞，已尝试暂停后继续播放"
             if message.endswith("handler started"):
                 return f"{display_name}开始"
             if message.endswith("handler completed"):

@@ -49,6 +49,31 @@ def test_api_keys_are_isolated_and_never_written_to_qsettings(tmp_path: Path) ->
     assert "test-" not in repr(store)
 
 
+def test_course_checkpoint_survives_new_store_without_touching_other_preferences(tmp_path: Path) -> None:
+    path = str(tmp_path / "checkpoint.ini")
+    credentials = FakeCredentialStore()
+    store = UserSettingsStore(settings=QSettings(path, QSettings.Format.IniFormat), credentials=credentials)
+    original = UserSettings("https://example.test/old", "deepseek", "custom-model", "test-profile")
+    assert store.save(original)
+    assert store.save_course_url("https://example.test/latest")
+    reloaded = UserSettingsStore(
+        settings=QSettings(path, QSettings.Format.IniFormat), credentials=credentials
+    )
+    assert reloaded.load() == UserSettings(
+        "https://example.test/latest", original.provider, original.model, original.profile_dir
+    )
+    assert credentials.get_calls == credentials.set_calls == []
+
+
+def test_course_checkpoint_storage_failure_is_safe(monkeypatch, isolated_settings_store, caplog) -> None:
+    def fail(*_args):
+        raise RuntimeError("https://example.test/course?enc=test-secret")
+
+    monkeypatch.setattr(isolated_settings_store._settings, "setValue", fail)
+    assert not isolated_settings_store.save_course_url("https://example.test/latest")
+    assert "test-secret" not in caplog.text
+
+
 def test_missing_or_externally_deleted_credential_returns_none(tmp_path: Path) -> None:
     credentials = FakeCredentialStore()
     store = UserSettingsStore(

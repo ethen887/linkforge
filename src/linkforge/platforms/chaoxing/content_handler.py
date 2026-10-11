@@ -17,6 +17,7 @@ from linkforge.platforms.chaoxing.exceptions import (
     ContentNavigationError,
 )
 from linkforge.platforms.chaoxing.models import ChaoxingPageState
+from linkforge.platforms.chaoxing.progress import course_resume_url
 from linkforge.platforms.chaoxing.task_detector import ChaoxingTaskDetector
 
 _NEXT_CARD_SELECTOR = "#prev_tab li.active + li"
@@ -59,6 +60,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
         config: ChaoxingContentHandlerConfig | None = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
+        on_course_url_changed: Callable[[str], None] | None = None,
     ) -> None:
         self._browser = browser
         self._detector = detector or ChaoxingTaskDetector(browser)
@@ -66,6 +68,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
         self._sleep = sleep
         self._monotonic = monotonic
         self._skipped_knowledge_ids: set[str] = set()
+        self._on_course_url_changed = on_course_url_changed
 
     def run(self) -> None:
         """Navigate one CONTENT step and return control to TaskRunner."""
@@ -206,6 +209,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
                 and current_state.knowledge_id == initial_state.knowledge_id
                 and current_state.content_frame_url != initial_state.content_frame_url
             ):
+                self._report_course_progress(current_state)
                 return
 
         raise ContentNavigationError(
@@ -240,11 +244,23 @@ class ChaoxingContentTaskHandler(TaskHandler):
                 and current_state.knowledge_id is not None
                 and f"cur{current_state.knowledge_id}" == target.node_id
             ):
+                self._report_course_progress(current_state)
                 return
 
         raise ContentNavigationError(
             "The Chaoxing knowledgeId did not change before the navigation deadline."
         )
+
+    def _report_course_progress(self, state: ChaoxingPageState) -> None:
+        """Publish only verified course navigation, without logging routing secrets."""
+        if self._on_course_url_changed is None:
+            return
+        try:
+            url = course_resume_url(self._browser.current_url(), state)
+            if url is not None:
+                self._on_course_url_changed(url)
+        except Exception:
+            logger.warning("Course progress could not be reported; this run can continue.")
 
     def _poll_page_state(
         self,

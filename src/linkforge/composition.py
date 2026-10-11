@@ -7,5 +7,7 @@ from linkforge.platforms.chaoxing.runtime import ChaoxingPlatformRuntime
 
 def create_application(config: ApplicationConfig) -> LinkForgeApplication:
     """Build the production LinkForge application for the supported platform."""
-    platform = ChaoxingPlatformRuntime(quiz_submitter=ChaoxingQuizSubmitter())
+    platform = ChaoxingPlatformRuntime(
+        quiz_submitter=ChaoxingQuizSubmitter(), on_course_url_changed=config.on_course_url_changed
+    )
     return LinkForgeApplication(config=config, platform=platform)

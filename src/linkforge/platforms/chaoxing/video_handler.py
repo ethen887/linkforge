@@ -40,6 +40,8 @@ class ChaoxingVideoHandlerConfig:
     video_available_timeout_seconds: float = 30.0
     playback_start_timeout_seconds: float = 15.0
     progress_timeout_seconds: float = 90.0
+    stall_recovery_interval_seconds: float = 15.0
+    stall_recovery_attempts: int = 2
     platform_finished_timeout_seconds: float = 30.0
 
     def __post_init__(self) -> None:
@@ -49,10 +51,17 @@ class ChaoxingVideoHandlerConfig:
             ("video_available_timeout_seconds", self.video_available_timeout_seconds),
             ("playback_start_timeout_seconds", self.playback_start_timeout_seconds),
             ("progress_timeout_seconds", self.progress_timeout_seconds),
+            ("stall_recovery_interval_seconds", self.stall_recovery_interval_seconds),
             ("platform_finished_timeout_seconds", self.platform_finished_timeout_seconds),
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be greater than 0")
+        if (
+            not isinstance(self.stall_recovery_attempts, int)
+            or isinstance(self.stall_recovery_attempts, bool)
+            or self.stall_recovery_attempts < 0
+        ):
+            raise ValueError("stall_recovery_attempts must be a non-negative integer")
 
 
 class ChaoxingVideoTaskHandler(TaskHandler):
@@ -107,6 +116,8 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         media_ended_since: float | None = None
         play_attempted = False
         play_requested_at: float | None = None
+        recovery_attempts = 0
+        last_recovery_at = started_at
 
         while True:
             now = self._monotonic()
@@ -218,10 +229,31 @@ class ChaoxingVideoTaskHandler(TaskHandler):
                 ):
                     last_current_time = video.current_time
                     last_progress_at = now
+                    recovery_attempts = 0
+                    last_recovery_at = now
                 elif now - last_progress_at >= self._config.progress_timeout_seconds:
+                    self._log_stalled_video(video, target, recovery_attempts, now - last_progress_at)
                     raise VideoTimeoutError(
                         "The Chaoxing video made no playback progress before the progress deadline."
                     )
+                else:
+                    # A player can report paused=False while its media clock is stuck.
+                    # Retry the normal playback controls without seeking, reloading,
+                    # extending the progress deadline, or changing task completion.
+                    if (
+                        not video.paused
+                        and recovery_attempts < self._config.stall_recovery_attempts
+                        and now - last_recovery_at >= self._config.stall_recovery_interval_seconds
+                    ):
+                        recovery_attempts += 1
+                        last_recovery_at = now
+                        self._log_stalled_video(video, target, recovery_attempts, now - last_progress_at)
+                        self._request_play(target, restart=True)
+                        logger.info("Video stall recovery requested")
+                    # The platform can restore an earlier media position. Use it as
+                    # the next baseline; a backward jump itself is not progress.
+                    if video.current_time < last_current_time - _PROGRESS_EPSILON_SECONDS:
+                        last_current_time = video.current_time
 
             self._sleep(self._config.poll_interval_seconds)
 
@@ -284,8 +316,28 @@ class ChaoxingVideoTaskHandler(TaskHandler):
             raise VideoTaskError("The target Chaoxing video frame is ambiguous.")
         return matches[0] if matches else None
 
-    def _request_play(self, target: ChaoxingModuleState) -> None:
-        expression = _play_video_script(target.url, target.frame_path)
+    @staticmethod
+    def _log_stalled_video(
+        video: ChaoxingVideoState,
+        target: ChaoxingModuleState,
+        recovery_attempts: int,
+        stalled_seconds: float,
+    ) -> None:
+        logger.warning(
+            "Video playback stalled: paused=%s ended=%s current_time=%.3f duration=%s "
+            "ready_state=%d frame_path=%s recovery_attempts=%d stalled_seconds=%.1f",
+            video.paused,
+            video.ended,
+            video.current_time,
+            video.duration,
+            video.ready_state,
+            target.frame_path,
+            recovery_attempts,
+            stalled_seconds,
+        )
+
+    def _request_play(self, target: ChaoxingModuleState, *, restart: bool = False) -> None:
+        expression = _play_video_script(target.url, target.frame_path, restart=restart)
         try:
             results = self._browser.evaluate_in_frames(expression)
         except BrowserError as exc:
@@ -310,9 +362,12 @@ class ChaoxingVideoTaskHandler(TaskHandler):
             raise VideoPlaybackError("The Chaoxing playback result was malformed.")
 
 
-def _play_video_script(target_url: str, target_path: tuple[int, ...] | None = None) -> str:
+def _play_video_script(
+    target_url: str, target_path: tuple[int, ...] | None = None, *, restart: bool = False
+) -> str:
     serialized_url = json.dumps(target_url)
     serialized_path = json.dumps(target_path)
+    serialized_restart = json.dumps(restart)
     return f"""() => {{
         {FRAME_PATH_SCRIPT}
         const frameUrl = window.location.href;
@@ -336,6 +391,9 @@ def _play_video_script(target_url: str, target_path: tuple[int, ...] | None = No
 
         const video = videos[0];
         let error = null;
+        if ({serialized_restart} && !video.ended) {{
+            video.pause();
+        }}
         if (video.paused && !video.ended) {{
             try {{
                 const playRequest = video.play();

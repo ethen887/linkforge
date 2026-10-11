@@ -329,6 +329,7 @@ class MainWindow(QMainWindow):
         worker.running.connect(self._on_running)
         worker.completed.connect(self._on_completed)
         worker.failed.connect(self._on_failed)
+        worker.course_url_changed.connect(self._on_course_url_changed)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(self._on_thread_finished)
@@ -378,6 +379,13 @@ class MainWindow(QMainWindow):
         self._worker.request_stop()
         self._set_state(RuntimeState.STOPPING, "当前任务完成后将安全退出。")
         self._append_log("正在停止，当前任务完成后将安全退出")
+
+    def _on_course_url_changed(self, course_url: str) -> None:
+        self.course_url_edit.setText(course_url)
+        if self._settings_store.save_course_url(course_url):
+            self._append_log("已记住当前课程页面，下次启动将从这里继续。")
+        else:
+            self._append_log("课程地址已更新，但未能保存；关闭前请复制课程地址。")
 
     def _on_running(self) -> None:
         if self._state is not RuntimeState.STOPPING:

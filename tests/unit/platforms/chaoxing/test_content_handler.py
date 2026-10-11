@@ -1,5 +1,7 @@
 """Unit tests for evidence-bounded Chaoxing content navigation."""
 
+from collections.abc import Callable
+
 import pytest
 
 from linkforge.application.task_runner import TaskHandler, TaskType
@@ -190,7 +192,9 @@ def _cross_knowledge_browser(
     )
 
 
-def _handler(browser: FakeBrowser, clock: FakeClock) -> ChaoxingContentTaskHandler:
+def _handler(
+    browser: FakeBrowser, clock: FakeClock, on_course_url_changed: Callable[[str], None] | None = None
+) -> ChaoxingContentTaskHandler:
     return ChaoxingContentTaskHandler(
         browser,
         config=ChaoxingContentHandlerConfig(
@@ -199,7 +203,45 @@ def _handler(browser: FakeBrowser, clock: FakeClock) -> ChaoxingContentTaskHandl
         ),
         sleep=clock.sleep,
         monotonic=clock.monotonic,
+        on_course_url_changed=on_course_url_changed,
     )
+
+
+@pytest.mark.parametrize("cross_knowledge", [False, True])
+def test_verified_navigation_reports_reopenable_course_url(cross_knowledge: bool) -> None:
+    if cross_knowledge:
+        browser = _cross_knowledge_browser([_state(knowledge_id="100"), _state(knowledge_id="200")])
+        expected = _PAGE_URL + "?courseId=test-course&chapterId=200&num=0"
+    else:
+        browser = ScriptedContentBrowser([_state(has_next=True), _state(active_index=1, card_number=1)])
+        expected = _PAGE_URL + "?courseId=test-course&chapterId=100&num=1"
+    browser.open(_PAGE_URL + "?courseId=test-course&chapterId=100&num=0")
+    updates: list[str] = []
+
+    _handler(browser, FakeClock(), updates.append).run()
+
+    assert updates == [expected]
+
+
+def test_failed_navigation_does_not_report_progress() -> None:
+    browser = ScriptedContentBrowser([_state(has_next=True)])
+    browser.open(_PAGE_URL + "?chapterId=100&num=0")
+    updates: list[str] = []
+    with pytest.raises(ContentNavigationError, match="active card did not change"):
+        _handler(browser, FakeClock(), updates.append).run()
+    assert updates == []
+
+
+def test_progress_callback_failure_does_not_abort_course_or_leak_url(caplog) -> None:
+    browser = ScriptedContentBrowser([_state(has_next=True), _state(active_index=1, card_number=1)])
+    browser.open(_PAGE_URL + "?chapterId=100&enc=test-secret")
+
+    def fail(url: str) -> None:
+        raise RuntimeError(url)
+
+    _handler(browser, FakeClock(), fail).run()
+    assert "Course progress could not be reported" in caplog.text
+    assert "test-secret" not in caplog.text
 
 
 def test_content_clicks_next_card_without_inspecting_knowledge_tree() -> None:

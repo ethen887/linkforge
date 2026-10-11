@@ -48,6 +48,77 @@ def _fill_valid_form(window: MainWindow, *, api_key: str = "test-secret") -> Non
     window.profile_dir_edit.setText("browser-profile")
 
 
+@pytest.mark.parametrize("outcome", ["complete", "stop", "error"])
+def test_worker_checkpoint_updates_ui_and_persists_before_exit(
+    qt_application: QApplication,
+    isolated_settings_store: UserSettingsStore,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+) -> None:
+    latest = "https://example.test/mycourse/studentstudy?chapterId=200&num=1&enc=test-route-secret"
+    release = threading.Event()
+    main_thread = threading.get_ident()
+    save_threads: list[int] = []
+    real_save = isolated_settings_store.save_course_url
+
+    def save(url: str) -> bool:
+        save_threads.append(threading.get_ident())
+        return real_save(url)
+
+    monkeypatch.setattr(isolated_settings_store, "save_course_url", save)
+
+    class ProgressApplication:
+        def __init__(self, config: ApplicationConfig) -> None:
+            self.config = config
+
+        def run(self) -> None:
+            assert threading.get_ident() != main_thread
+            assert self.config.on_course_url_changed is not None
+            self.config.on_course_url_changed(latest)
+            assert release.wait(timeout=3)
+            if outcome == "error":
+                raise RuntimeError("test failure after navigation")
+
+        def stop(self) -> None:
+            release.set()
+
+    window = MainWindow(application_factory=ProgressApplication, error_presenter=lambda *_args: None)  # type: ignore[arg-type]
+    _fill_valid_form(window)
+    window.start_button.click()
+    try:
+        _wait_until(qt_application, lambda: window.course_url_edit.text() == latest)
+        assert isolated_settings_store.load().course_url == latest
+        assert save_threads == [main_thread]
+        assert "test-route-secret" not in window.log_edit.toPlainText()
+        if outcome == "stop":
+            window._request_stop()
+        else:
+            release.set()
+        _wait_until(qt_application, lambda: window._thread is None)
+        assert window.state is (RuntimeState.ERROR if outcome == "error" else RuntimeState.FINISHED)
+        window.close()
+        reopened = MainWindow(error_presenter=lambda *_args: None)
+        assert reopened.course_url_edit.text() == latest
+        reopened.close()
+    finally:
+        release.set()
+        _wait_until(qt_application, lambda: window._thread is None)
+        window.close()
+
+
+def test_checkpoint_save_failure_keeps_latest_address_visible(
+    qt_application: QApplication,
+    isolated_settings_store: UserSettingsStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(isolated_settings_store, "save_course_url", lambda _url: False)
+    window = MainWindow(error_presenter=lambda *_args: None)
+    window._on_course_url_changed("https://example.test/latest")
+    assert window.course_url_edit.text() == "https://example.test/latest"
+    assert "未能保存" in window.log_edit.toPlainText()
+    window.close()
+
+
 class BlockingApplication:
     def __init__(self) -> None:
         self.run_started = threading.Event()
@@ -124,6 +195,20 @@ def test_gui_log_shows_only_translated_user_messages(qt_application: QApplicatio
     runtime_logger.setLevel(previous_level)
     window.close()
     qt_application.processEvents()
+
+
+def test_gui_translates_video_stall_recovery(qt_application: QApplication) -> None:
+    window = MainWindow(error_presenter=lambda *_args: None)
+    video_logger = logging.getLogger("linkforge.platforms.chaoxing.video_handler")
+    previous_level = video_logger.level
+    try:
+        video_logger.setLevel(logging.INFO)
+        video_logger.info("Video stall recovery requested")
+        qt_application.processEvents()
+        assert "视频播放暂时停滞" in window.log_edit.toPlainText()
+    finally:
+        video_logger.setLevel(previous_level)
+        window.close()
 
 
 def test_gui_shows_manual_login_wait_and_course_readiness(qt_application: QApplication) -> None:

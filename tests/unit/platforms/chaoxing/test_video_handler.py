@@ -274,6 +274,86 @@ def test_video_without_progress_fails_at_stuck_deadline() -> None:
         _handler(browser, clock, progress_timeout_seconds=2.0).run()
 
 
+def test_stalled_playing_video_recovers_with_pause_and_play() -> None:
+    stalled = _page_state(_module(), video=_video(current_time=1.0))
+    browser = ScriptedFrameBrowser(
+        [
+            stalled,
+            stalled,
+            stalled,
+            _page_state(_module(), video=_video(current_time=2.0)),
+            _page_state(_module(finished=True)),
+        ]
+    )
+    _handler(browser, FakeClock(), stall_recovery_interval_seconds=1.0).run()
+    play_calls = [call for call in browser.frame_evaluation_calls if "const playRequest" in call]
+    assert len(play_calls) == 1
+    assert "if (true && !video.ended)" in play_calls[0]
+    assert "video.pause()" in play_calls[0]
+
+
+def test_stall_recovery_is_bounded_and_does_not_extend_progress_deadline(caplog) -> None:
+    stalled = _page_state(_module(), video=_video(current_time=1.0))
+    browser = ScriptedFrameBrowser([stalled])
+    clock = FakeClock()
+    with pytest.raises(VideoTimeoutError, match="no playback progress"):
+        _handler(
+            browser,
+            clock,
+            progress_timeout_seconds=5.0,
+            stall_recovery_interval_seconds=1.0,
+            stall_recovery_attempts=2,
+        ).run()
+    assert clock.now == 5.0
+    assert sum("const playRequest" in call for call in browser.frame_evaluation_calls) == 2
+    assert "ready_state=4" in caplog.text
+    assert "recovery_attempts=2" in caplog.text
+    assert "current_time=1.000" in caplog.text
+    assert _VIDEO_URL not in caplog.text
+
+
+def test_stall_recovery_can_be_disabled() -> None:
+    browser = ScriptedFrameBrowser([_page_state(_module(), video=_video(current_time=1.0))])
+    with pytest.raises(VideoTimeoutError):
+        _handler(browser, FakeClock(), stall_recovery_interval_seconds=1.0, stall_recovery_attempts=0).run()
+    assert all("const playRequest" not in call for call in browser.frame_evaluation_calls)
+
+
+def test_progress_after_backward_position_restore_is_detected() -> None:
+    browser = ScriptedFrameBrowser(
+        [
+            _page_state(_module(), video=_video(current_time=8.0)),
+            _page_state(_module(), video=_video(current_time=8.0)),
+            _page_state(_module(), video=_video(current_time=1.0)),
+            _page_state(_module(), video=_video(current_time=2.0)),
+            _page_state(_module(), video=_video(current_time=3.0)),
+            _page_state(_module(finished=True)),
+        ]
+    )
+    _handler(browser, FakeClock(), progress_timeout_seconds=2.0).run()
+
+
+def test_repeated_backward_jumps_alone_do_not_extend_progress_deadline() -> None:
+    browser = ScriptedFrameBrowser(
+        [
+            _page_state(_module(), video=_video(current_time=8.0)),
+            _page_state(_module(), video=_video(current_time=8.0)),
+            _page_state(_module(), video=_video(current_time=7.0)),
+            _page_state(_module(), video=_video(current_time=6.0)),
+        ]
+    )
+    clock = FakeClock()
+    with pytest.raises(VideoTimeoutError, match="no playback progress"):
+        _handler(browser, clock, progress_timeout_seconds=2.0).run()
+    assert clock.now == 2.0
+
+
+@pytest.mark.parametrize("attempts", [-1, True, 1.5])
+def test_stall_recovery_rejects_invalid_attempt_counts(attempts) -> None:
+    with pytest.raises(ValueError, match="stall_recovery_attempts"):
+        ChaoxingVideoHandlerConfig(stall_recovery_attempts=attempts)
+
+
 def test_video_frame_can_be_reacquired_after_dynamic_replacement() -> None:
     browser = ScriptedFrameBrowser(
         [

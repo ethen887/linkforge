@@ -1,7 +1,7 @@
 """Unit tests for the Chaoxing platform composition root."""
 
 import inspect
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import linkforge.platforms.chaoxing.runtime as runtime_module
@@ -88,6 +88,9 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
     handler_dependencies: list[tuple[str, Browser, object | None, object | None]] = []
     solver_calls: list[tuple[LLM, str]] = []
     generator_calls: list[tuple[LLM, str]] = []
+    progress_callbacks: list[Callable[[str], None] | None] = []
+    progress: list[str] = []
+    progress_callback = progress.append
 
     def create_detector(
         received_browser: Browser,
@@ -134,6 +137,7 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
             body_generator: object | None = None,
             video_session: VideoSession | None = None,
             innerbook_session: InnerbookSession | None = None,
+            on_course_url_changed: Callable[[str], None] | None = None,
         ) -> RecordingHandler:
             if name == "video":
                 dependency = video_session
@@ -141,6 +145,7 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
                 dependency = (innerbook_session, video_session)
             elif name == "content":
                 dependency = detector
+                progress_callbacks.append(on_course_url_changed)
             elif name == "quiz":
                 dependency = (detector, solver, submitter)
             else:
@@ -159,12 +164,13 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
     monkeypatch.setattr(runtime_module, "ChaoxingQuizTaskHandler", create_handler("quiz"))
     monkeypatch.setattr(runtime_module, "ChaoxingCommentTaskHandler", create_handler("comment"))
 
-    runtime = ChaoxingPlatformRuntime(quiz_submitter=submitter)
+    runtime = ChaoxingPlatformRuntime(quiz_submitter=submitter, on_course_url_changed=progress_callback)
     first_runner = runtime.build_runner(browser=browser, llm=llm, model="vision-model")
     second_runner = runtime.build_runner(browser=browser, llm=llm, model="vision-model")
 
     assert isinstance(first_runner, TaskRunner)
     assert isinstance(second_runner, TaskRunner)
+    assert progress_callbacks == [progress_callback, progress_callback]
     assert len(records) == 2
     assert records[0].session is not records[1].session
     assert records[0].video_session is not records[1].video_session

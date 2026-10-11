@@ -134,6 +134,67 @@ def test_video_handler_plays_media_and_verifies_completion(marker_mode: str) -> 
         assert state.modules[0].finished is (marker_mode != "ordinary")
 
 
+def test_stall_recovery_only_restarts_the_pending_video_with_identical_urls() -> None:
+    video_html = """
+        <video id="video"></video>
+        <script>
+            const state = {paused: false, ended: false, currentTime: 0};
+            const video = document.getElementById('video');
+            document.body.dataset.pauseCount = '0';
+            Object.defineProperties(video, {
+                paused: {get: () => state.paused},
+                ended: {get: () => state.ended},
+                currentTime: {get: () => state.currentTime},
+                duration: {get: () => 1},
+                readyState: {get: () => 4},
+            });
+            video.pause = () => {
+                state.paused = true;
+                document.body.dataset.pauseCount = String(Number(document.body.dataset.pauseCount) + 1);
+            };
+            video.play = async () => {
+                state.paused = false;
+                state.currentTime = 1;
+                state.ended = true;
+            };
+        </script>
+    """
+    video_url = _data_url(video_html, "/ananas/modules/video/index.html?objectid=local-stalled")
+    content_html = f"""
+        <div class="ans-attach-ct ans-job-finished">
+            <span class="ans-job-icon"></span>
+            <iframe src="{escape(video_url, quote=True)}"></iframe>
+        </div>
+        <div class="ans-attach-ct">
+            <iframe src="{escape(video_url, quote=True)}"></iframe>
+        </div>
+    """
+    content_url = _data_url(content_html, "/mooc-ans/knowledge/cards?knowledgeid=100&num=1")
+    page_html = f"""
+        <ul id="prev_tab"><li class="active">Videos</li></ul>
+        <iframe src="{escape(content_url, quote=True)}"></iframe>
+    """
+    with PlaywrightBrowser(headless=True, timeout_ms=3_000) as browser:
+        browser.open(_data_url(page_html, "/mycourse/studentstudy"))
+        _wait_until_chaoxing_page_ready(browser)
+        session = VideoSession()
+        handler = ChaoxingVideoTaskHandler(
+            browser,
+            video_session=session,
+            config=ChaoxingVideoHandlerConfig(
+                poll_interval_seconds=0.05,
+                overall_timeout_seconds=3.0,
+                video_available_timeout_seconds=0.1,
+                progress_timeout_seconds=2.0,
+                stall_recovery_interval_seconds=0.1,
+            ),
+        )
+        handler.run()
+        counts = browser.evaluate_in_frames("() => document.body.dataset.pauseCount || null")
+        assert [count for count in counts if count is not None] == ["0", "1"]
+        assert ChaoxingTaskDetector(browser, video_session=session).detect() is TaskType.CONTENT
+
+
 @pytest.mark.parametrize("has_task_point", [False, True])
 def test_identical_video_urls_are_played_and_completed_independently(has_task_point: bool) -> None:
     # Data URLs have opaque origins: this also verifies paths across origin boundaries.

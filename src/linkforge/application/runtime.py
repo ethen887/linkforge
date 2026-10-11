@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from linkforge.application.task_runner import TaskRunner
@@ -25,6 +25,7 @@ class ApplicationConfig:
     course_url: str
     browser_config: BrowserConfig
     model_config: ModelConfig
+    on_course_url_changed: Callable[[str], None] | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not self.course_url.strip():
