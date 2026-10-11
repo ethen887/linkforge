@@ -1,0 +1,38 @@
+LinkForge — Windows x64 安装版
+
+安装与启动
+1. 双击 setup.exe，按中文向导安装，无需管理员权限。
+2. 默认安装到 %LOCALAPPDATA%\Programs\LinkForge，也可以选择其他可写目录。
+3. 从开始菜单启动 LinkForge；安装时可以选择创建桌面快捷方式。
+4. 填写学习通课程地址、模型服务商、模型及自己的 API Key。
+5. 测验需要支持图片输入的模型；模型服务可能按供应商规则收费。
+6. 点击“开始运行”，在浏览器中手动登录，使用过程需要联网。
+
+文件与用户数据
+- 安装包包含 Python 运行时、Chromium 和依赖，无需另行安装。
+- 日志位于 %LOCALAPPDATA%\LinkForge\logs，可以点击“打开日志文件夹”。
+- 默认浏览器登录数据位于 %LOCALAPPDATA%\LinkForge\browser-profile。
+- 常用配置通过 Qt 设置保存；API Key 保存在 Windows 凭据管理器中。
+- 不要单独移动 EXE 或删除 _internal、installed.ini。
+
+升级与卸载
+- 升级前停止任务并关闭 LinkForge 和它启动的浏览器，再运行新版安装程序。
+- 新版使用相同安装标识，默认沿用原安装目录。
+- 使用相同 Windows 账户时，原配置及登录数据继续保留；登录过期仍需重新登录。
+- 可以在 Windows“已安装的应用”或开始菜单中卸载。
+- 卸载只移除程序文件，保留日志、浏览器数据、配置和 API Key。
+
+问题反馈与限制
+- 遇到问题，请通过“用户反馈”提供操作步骤、截图和对应日志。
+- 上传前检查并删除敏感信息，不要上传 API Key、Cookie、密码、完整课程链接或浏览器目录。
+- 测验截图与讨论上下文会发送给您配置的模型服务，模型答案不保证正确。
+- 页面变化、未支持模块可能导致运行停止；当前不保证整门课程完整处理。
+- “停止”会请求安全退出，当前任务可能需要完成后才停止。
+- 本候选安装包仍需完成干净 Windows 环境与真实课程验收。
+
+开发者诊断
+LinkForge.exe --self-test <报告JSON的绝对路径>
+自检使用临时配置、本地页面及独立的临时凭据条目，不读取用户 API Key。
+
+项目：https://github.com/ethen887/linkforge
+许可证：见 LICENSE.txt、THIRD_PARTY_NOTICES 和 _internal 中随依赖附带的声明。

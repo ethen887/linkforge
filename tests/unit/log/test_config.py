@@ -88,3 +88,33 @@ def test_frozen_logs_follow_executable_not_working_directory(tmp_path, monkeypat
 def test_source_log_location_is_unchanged(monkeypatch):
     monkeypatch.delattr(sys, "frozen", raising=False)
     assert _default_log_dir() == Path(__file__).resolve().parents[3] / "logs"
+
+
+def test_installed_logs_use_user_data_even_from_another_working_directory(tmp_path, monkeypatch):
+    from PySide6.QtCore import QStandardPaths
+
+    application_dir = tmp_path / "安装目录"
+    application_dir.mkdir()
+    (application_dir / "installed.ini").write_text("[distribution]\nmode=installed\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(application_dir / "LinkForge.exe"))
+    user_data = tmp_path / "用户数据"
+    monkeypatch.setattr(QStandardPaths, "writableLocation", lambda _kind: str(user_data))
+    monkeypatch.chdir(tmp_path)
+
+    log_file = setup_logging()
+
+    assert log_file.parent == user_data / "LinkForge" / "logs"
+    assert not (application_dir / "logs").exists()
+    assert log_file.is_file()
+
+
+def test_installed_logs_fail_when_user_data_location_is_unavailable(tmp_path, monkeypatch):
+    from PySide6.QtCore import QStandardPaths
+
+    (tmp_path / "installed.ini").touch()
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "LinkForge.exe"))
+    monkeypatch.setattr(QStandardPaths, "writableLocation", lambda _kind: "")
+    with pytest.raises(OSError, match="Local application data"):
+        setup_logging()
