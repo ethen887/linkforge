@@ -8,11 +8,14 @@ LinkForge 是一个基于 Python、Playwright 和大模型的浏览器自动化�
 
 ## 项目状态
 
-项目处于早期开发与真实页面验证阶段，支持源码运行，并新增 Windows x64 便携候选包构建流程。
-候选包采用 PyInstaller onedir 并内置 Chromium；完成发行验收后，用户可完整解压并双击运行，
-无需安装 Python 或其他开发环境。当前尚未公开发布经过完整安装验收的桌面发行包。
+项目处于早期开发与真实页面验证阶段，支持源码运行、Windows x64 便携包和中文 Setup 安装包构建。
+候选包采用 PyInstaller onedir 并内置 Chromium，Setup 使用 Inno Setup 包装完整程序目录；
+用户无需安装 Python 或其他开发环境。当前尚未公开发布经过完整安装验收的桌面发行包。
 
 开发者构建和验收步骤见 [Windows 便携版构建与验收](docu/Windows便携版构建与验收.md)。
+
+中文 Setup 安装包的构建步骤见 [Windows 安装版构建与验收](docu/Windows安装版构建与验收.md)。
+安装版默认按当前用户安装，并将日志保存到 `%LOCALAPPDATA%\LinkForge\logs`。
 
 目前主要验证 Windows 桌面使用流程。自动化测试包含本地浏览器集成测试和 GUI 测试，但不代表所有课程页面、模型服务或桌面系统均已兼容。
 
@@ -72,6 +75,57 @@ Linux 环境安装浏览器时，可能还需要系统依赖：
 uv run playwright install --with-deps chromium
 ```
 
+## 构建 Windows Setup 安装包
+
+开发者可以用一条命令，从源码生成可分发的 `setup.exe`。
+
+**前置条件：**
+
+- Windows x64 和 64 位 Python 3.12。
+- 已安装 uv，并已克隆本仓库。
+- 已安装 Inno Setup 7；安装程序的中文语言文件需保留。
+- 构建时可以联网下载依赖与 Chromium。
+
+**在仓库根目录的 PowerShell 中执行：**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build_installer.ps1
+```
+
+**无需先手动生成 `LinkForge.exe`。** 这个脚本会依次完成：
+
+1. 按 `uv.lock` 同步依赖，准备内置 Chromium。
+2. 用 PyInstaller 生成 `LinkForge.exe` 及完整依赖目录。
+3. 运行生成程序的离线自检；失败时中止构建。
+4. 用 Inno Setup 将完整程序目录编译成中文 Setup，并生成 SHA-256 校验文件。
+
+**成功后，到 `dist/` 目录获取安装包。当前版本输出为：**
+
+```text
+dist/
+├── LinkForge-v0.1.0-beta.1-windows-x64-setup.exe
+└── LinkForge-v0.1.0-beta.1-windows-x64-setup.exe.sha256
+```
+
+文件名中的版本号随项目版本变化。构建流程还会生成同版本便携 ZIP；给安装版用户分发 `setup.exe` 即可。
+最终用户双击安装包，按向导安装后从开始菜单或桌面快捷方式启动。
+
+脚本会自动查找 Inno Setup 编译器。使用自定义安装位置时，可以指定 `ISCC.exe`：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build_installer.ps1 -IsccPath "C:\Tools\Inno Setup 7\ISCC.exe"
+```
+
+在尚未安装 LinkForge 的 Windows 测试账户中，可执行安装验收：
+
+```powershell
+uv run --locked python scripts/verify_installer.py dist/LinkForge-v0.1.0-beta.1-windows-x64-setup.exe
+```
+
+该命令会在独立目录中临时安装、自检、覆盖安装并卸载；已有安装时会拒绝执行。
+干净 Windows 环境、跨版本升级和真实课程仍需另行验收。详细说明见
+[Windows 安装版构建与验收](docu/Windows安装版构建与验收.md)。
+
 ## 使用方法
 
 1. 在浏览器中进入学习通课程，复制实际课程学习页面的地址。
@@ -83,7 +137,8 @@ uv run playwright install --with-deps chromium
 
 点击“停止”会请求安全退出。当前任务执行期间可能需要等待，停止操作不会立即强制中断任务。
 
-便携版运行日志保存在 EXE 同级 `logs/` 中；源码运行保存在项目根目录的 `logs/` 中。
+安装版运行日志保存在 `%LOCALAPPDATA%\LinkForge\logs` 中；便携版保存在 EXE 同级 `logs/` 中；
+源码运行保存在项目根目录的 `logs/` 中。
 可点击“打开日志文件夹”定位本次日志。反馈问题时，请提供错误类型、复现步骤以及经过检查和脱敏的日志片段。
 便携版须完整解压到有写入权限的位置，不要单独移动 EXE 或删除 `_internal`。
 
