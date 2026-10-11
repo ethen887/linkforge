@@ -1,33 +1,20 @@
-# Repository Guidelines
+# LinkForge
 
-## Project Structure & Module Organization
+LinkForge 是基于 Python 3.12+、Playwright 和大模型的浏览器自动化项目，采用 `src/` 布局。
+目前提供桌面 GUI，主要处理学习通课程任务，同时保留可扩展的浏览器观察、动作执行与 Agent 模块。
+应用代码位于 `src/linkforge/`，测试位于 `tests/`，项目说明位于 `docu/`。
 
-LinkForge is a Python 3.12+ package using the `src/` layout. Application code lives in `src/linkforge/`: `agent/` contains Browser Agent contracts and orchestration, `browser/` browser adapters, `observation/` page-state capture, `action/` structured browser actions, `llm/` provider implementations, and `config/` settings. Keep new functionality inside the most specific existing module; add a small, focused module rather than growing unrelated files.
+本文件仅提供项目介绍和规则路由。根据任务读取下表中所有适用文档；具体规则维护在 `ai/` 中，
+无需一次读取全部文档。表内相对路径均以仓库根目录为基准。
 
-Tests mirror product areas under `tests/unit/` and `tests/integration/`; browser integration coverage is in `tests/integration/browser/`. Put shared test doubles in `tests/fakes.py`. Repository and design notes are in `docu/`.
+## 规则路由表
 
-## Build, Test, and Development Commands
-
-Use `uv` with the committed lockfile:
-
-```powershell
-uv sync --locked                 # create/update the local environment from uv.lock
-uv run pytest                    # run the complete test suite
-uv run ruff format --check .     # verify formatting
-uv run ruff check .              # run lint checks
-uv run mypy src                  # type-check package code
-```
-
-Run `uv run ruff format .` only when formatting intended changes. The CI workflow runs all four quality checks above on pushes and pull requests to `main`.
-
-## Coding Style & Naming Conventions
-
-Follow Ruff's 108-character line limit and Python 3.12-compatible syntax. Use four-space indentation, `snake_case` for modules/functions/variables, `PascalCase` for classes, and clear type annotations on public interfaces. Keep external services behind replaceable adapters (for example, browser and LLM implementations). Prefer deterministic rules over model decisions for predictable work. Do not commit API keys, cookies, tokens, passwords, or user data.
-
-## Testing Guidelines
-
-Use `pytest`; name files `test_<feature>.py`, classes `Test<Feature>`, and tests `test_<behavior>`. Add or update unit tests with behavior changes. Mark integration tests only when they need real external dependencies, and ensure tests remain safe to run without credentials. Run the full quality command set before opening a pull request.
-
-## Commit & Pull Request Guidelines
-
-History uses concise Conventional Commit-style prefixes, including `feat(browser): ...`, `fix: ...`, `refactor: ...`, and `chore: ...`; follow that pattern and keep each commit scoped. Work from an Issue on a feature branch, never directly on `main`. Use the pull-request template: link the Issue (`Closes #123`), explain purpose and major changes, describe meaningful design choices, and list exact verification commands. Include screenshots or terminal output when a UI/CLI-visible change benefits from evidence.
+| 任务或读取时机 | 文档 | 内容 |
+|---|---|---|
+| 所有项目任务开始时 | [ai/git.md](ai/git.md)、[ai/security.md](ai/security.md) | 协作流程、工作区保护、凭据与用户数据约束 |
+| 涉及本机开发环境或项目时 | `D:\Dev\AI\AI.md` | 本机规则入口及环境文档的按需路由 |
+| 定位代码、增加模块、调整职责或架构时 | [ai/architecture.md](ai/architecture.md) | 目录职责、模块边界、设计原则 |
+| 编写 Python、安装依赖、运行或配置开发工具时 | [ai/python.md](ai/python.md) | Python 版本、uv、编码规范、运行命令 |
+| 修改行为、编写测试、检查文档、验证变更或准备 PR 时 | [ai/testing.md](ai/testing.md) | 测试组织、质量检查、验证记录 |
+| 提交、推送、创建或评审 PR 时 | [ai/git.md](ai/git.md) | Issue、分支、Commit、PR 模板与评审流程 |
+| 构建或验收 Windows 便携版时 | [ai/python.md](ai/python.md)、[ai/testing.md](ai/testing.md)、[Windows 便携版构建与验收](docu/Windows便携版构建与验收.md) | 构建环境、检查要求与发行验收步骤 |
