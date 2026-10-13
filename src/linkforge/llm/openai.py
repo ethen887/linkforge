@@ -26,7 +26,7 @@ class OpenAIInterface(LLM):
         )
 
     def _convert_tool_calls(self, tool_calls: tuple[ToolCall, ...]) -> list[dict[str, Any]]:
-        """Convert LinkForge tool calls to OpenAI function tool-call format."""
+        """将 LinkForge 的工具调用转换为 OpenAI 的函数工具调用格式。"""
         openai_tool_calls = []
 
         for tool_call in tool_calls:
@@ -47,7 +47,7 @@ class OpenAIInterface(LLM):
         return openai_tool_calls
 
     def _convert_message(self, message: LLMMessage) -> dict[str, Any]:
-        """Convert a LinkForge message to OpenAI message format."""
+        """将 LinkForge 消息转换为 OpenAI 消息格式。"""
         role = message.role
 
         if message.images:
@@ -100,13 +100,12 @@ class OpenAIInterface(LLM):
         messages: list[LLMMessage],
         tools: list[dict[str, Any]],
     ) -> LLMResponse:
-        """Call an OpenAI-compatible model and normalize its response."""
+        """调用兼容 OpenAI 接口的模型并将其响应归一化。"""
         return self._call(model, messages, tools)
 
     def call_json_model(self, model: str, messages: list[LLMMessage]) -> LLMResponse:
-        # Deliberately endpoint-scoped: arbitrary OpenAI-compatible proxies do
-        # not necessarily implement response_format even when their protocol
-        # otherwise matches Chat Completions.
+        # 刻意按端点限定：任意的 OpenAI 兼容代理未必都实现 response_format，
+        # 即使其协议与 Chat Completions 恰好匹配。
         endpoint = str(self.client.base_url).rstrip("/")
         return self._call(model, messages, [], json_object=endpoint in _JSON_OBJECT_ENDPOINTS)
 
@@ -135,8 +134,8 @@ class OpenAIInterface(LLM):
 
         if response.tool_calls:
             for item in response.tool_calls:
-                # OpenAI SDK may return different tool-call variants.
-                # LinkForge currently supports function tool calls only.
+                # OpenAI SDK 可能返回不同的工具调用变体。
+                # LinkForge 目前只支持函数工具调用。
                 if item.type != "function":
                     continue
 

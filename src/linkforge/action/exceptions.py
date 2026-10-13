@@ -1,9 +1,9 @@
-"""Action-layer exceptions."""
+"""动作层异常。"""
 
 
 class ActionError(RuntimeError):
-    """Base exception for action failures."""
+    """动作失败的基础异常。"""
 
 
 class ActionExecutionError(ActionError):
-    """Raised when an action cannot be executed."""
+    """当动作无法被执行时抛出。"""

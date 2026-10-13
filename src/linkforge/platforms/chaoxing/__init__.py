@@ -1,1 +1,1 @@
-"""Chaoxing platform integration."""
+"""学习通平台集成。"""

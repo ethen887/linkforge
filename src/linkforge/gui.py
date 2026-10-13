@@ -1,4 +1,4 @@
-"""Executable entry point for the LinkForge desktop GUI."""
+"""LinkForge 桌面 GUI 的可执行入口点。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> int:
-    """Start the LinkForge Qt application and return its exit code."""
+    """启动 LinkForge Qt 应用并返回其退出码。"""
     application = QApplication(sys.argv)
     application.setApplicationName("LinkForge")
     application.setOrganizationName("LinkForge")

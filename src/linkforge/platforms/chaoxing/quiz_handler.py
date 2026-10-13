@@ -1,4 +1,4 @@
-"""Production quiz answering with an explicit, fail-closed submission boundary."""
+"""生产环境做题，带显式、失败即关闭的提交流水边界。"""
 
 import logging
 import time
@@ -62,11 +62,11 @@ _REVEAL_PENDING_QUIZ_SCRIPT = """() => {
 
 class QuizSubmitter(Protocol):
     def submit(self, browser: Browser, *, module_url: str) -> None:
-        """Submit once through verified normal UI, including its confirmation.
+        """通过已验证的正常 UI 提交一次，包含其确认流程。
 
-        Must not POST directly, invoke private site APIs, or forge completion.
-        Returning means the UI submission was attempted; the handler separately
-        waits for the same module's real task-point completion marker.
+        不得直接 POST、调用站点私有 API 或伪造已完成。
+        返回意味着已尝试 UI 提交；Handler 会另行等待同一模块的
+        真实任务点完成标记。
         """
         ...
 
@@ -93,15 +93,15 @@ class ChaoxingQuizHandlerConfig:
 
 
 class _QuizSnapshotChangedError(ChaoxingQuizStateError):
-    """The unsubmitted quiz DOM changed between fresh inspections."""
+    """两次全新检查之间，未提交的 quiz DOM 发生了变化。"""
 
 
 class ChaoxingQuizTaskHandler(TaskHandler):
-    """Answer one quiz; run() returns only after verified platform completion.
+    """作答一道 quiz；run() 仅在平台完成被校验后返回。
 
-    answer_all() is the explicit no-submit entry point for validation. Without
-    a verified submitter, run() answers all questions then raises a submission
-    error, preventing TaskRunner from treating an unsubmitted quiz as finished.
+    answer_all() 是用于校验的显式不提交入口。在没有已验证提交器时，
+    run() 作答完所有题目后抛出提交错误，防止 TaskRunner 把未提交的
+    quiz 当作已完成。
     """
 
     def __init__(
@@ -151,12 +151,11 @@ class ChaoxingQuizTaskHandler(TaskHandler):
         deadline: float | None = None,
         on_unavailable: Callable[[], None] | None = None,
     ) -> _T:
-        """Run one bounded operation in a fresh question-frame scope.
+        """在全新的题目 frame 作用域内运行一个有界的操作。
 
-        Chaoxing may replace the nested work iframe at any time. Element
-        handles therefore never survive across model requests; transient
-        browser failures reopen the scope, while semantic state failures
-        remain fail-closed.
+        Chaoxing 可能随时替换嵌套的 work iframe。因此元素句柄在跨模型请求
+        时从不复用；瞬时浏览器失败会重新打开作用域，而语义状态失败保持
+        失败即关闭。
         """
         if deadline is None:
             deadline = self._monotonic() + self._config.readiness_timeout_seconds
@@ -174,10 +173,9 @@ class ChaoxingQuizTaskHandler(TaskHandler):
             except BrowserError as exc:
                 last_error = exc
                 if on_unavailable is not None:
-                    # Some course pages first expose a visible "Chapter Quiz"
-                    # entry rather than loading the nested question iframe.
-                    # Activate that normal UI entry once, then keep the same
-                    # bounded wait for the actual question document.
+                    # 有些课程页面会先暴露可见的“章节测验（Chapter Quiz）”入口，
+                    # 而不是直接加载嵌套的题目 iframe。先激活一次该正常 UI 入口，
+                    # 然后继续同样的有界等待以获取真正的题目文档。
                     activate, on_unavailable = on_unavailable, None
                     activate()
                 if self._monotonic() >= deadline:
@@ -209,7 +207,7 @@ class ChaoxingQuizTaskHandler(TaskHandler):
         )
 
     def _reveal_pending_quiz(self) -> None:
-        """Bring the pending quiz card into view so Chaoxing can lazy-load it."""
+        """把待处理的 quiz 卡片滚动到视野内，好让 Chaoxing 能懒加载它。"""
         try:
             if any(
                 result is True for result in self._browser.evaluate_in_frames(_REVEAL_PENDING_QUIZ_SCRIPT)
@@ -219,11 +217,10 @@ class ChaoxingQuizTaskHandler(TaskHandler):
             logger.debug("Pending quiz card could not be revealed while the page is redrawing")
 
     def _open_quiz_entry(self, content_url: str, module_url: str) -> None:
-        """Open one unambiguous visible quiz entry, if this module has one.
+        """若该模块存在唯一可见的 quiz 入口，则打开它。
 
-        The course may lazy-load a work iframe only after its Chapter Quiz card
-        is brought into view and activated.  This uses the site's ordinary UI;
-        it neither changes completion state nor calls private endpoints.
+        课程可能只有在“章节测验”卡片被进入视野并激活后，才懒加载 work
+        iframe。这里使用站点的普通 UI；既不改完成状态，也不调用私有端点。
         """
         try:
             with self._browser.element_scope(
@@ -242,8 +239,8 @@ class ChaoxingQuizTaskHandler(TaskHandler):
                 elif len(entries) > 1:
                     logger.warning("Quiz entry is ambiguous; waiting without clicking")
         except BrowserError:
-            # The standard question-frame wait below owns the final bounded
-            # error and remains safe if the card redraws during this attempt.
+            # 下面的标准题目 frame 等待会处理最终的有界错误；
+            # 若卡片在本段尝试期间重绘，也是安全的。
             logger.debug("Visible quiz entry unavailable while question iframe is loading")
 
     def _prepare_pending_quiz(self, content_url: str, module_url: str) -> None:
@@ -275,7 +272,7 @@ class ChaoxingQuizTaskHandler(TaskHandler):
         *,
         deadline: float,
     ) -> int:
-        """Wait for the progressively rendered question list to stabilize."""
+        """等待渐进渲染的题目列表达到稳定。"""
         count: int | None = None
         observations = 0
         while True:
@@ -387,7 +384,7 @@ class ChaoxingQuizTaskHandler(TaskHandler):
                 answers.append(answer)
                 self.last_answers = tuple(answers)
                 index += 1
-            # Re-read all selections in another fresh scope before submission.
+            # 在提交之前，用另一个全新作用域重新读取全部选中项。
 
             def verify(elements: tuple[BrowserElement, ...]) -> None:
                 self._verify_answers(elements, answers, question_count)
@@ -401,7 +398,7 @@ class ChaoxingQuizTaskHandler(TaskHandler):
             raise ChaoxingQuizStateError("Quiz DOM operation failed.") from exc
 
     def run(self) -> None:
-        """Answer and submit one quiz, then verify platform completion."""
+        """作答并提交一道 quiz，然后校验平台的完成状态。"""
         logger.info("Quiz handler started")
         try:
             self._run()

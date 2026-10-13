@@ -1,4 +1,4 @@
-"""Composition helpers for one Chaoxing comment-handling application run."""
+"""为某一次学习通评论处理应用运行提供的组装辅助函数。"""
 
 from dataclasses import dataclass
 
@@ -16,6 +16,8 @@ from linkforge.platforms.chaoxing.task_detector import ChaoxingTaskDetector
 
 @dataclass(frozen=True, slots=True)
 class ChaoxingCommentComponents:
+    """本次评论处理运行所需的组件集合。"""
+
     session: CommentSession
     detector: ChaoxingTaskDetector
     comment_handler: ChaoxingCommentTaskHandler
@@ -25,7 +27,7 @@ class ChaoxingCommentComponents:
 def create_chaoxing_comment_components(
     browser: Browser, model_config: ModelConfig
 ) -> ChaoxingCommentComponents:
-    """Create components that share exactly one run-scoped comment session."""
+    """创建共享同一个单次运行范围内评论会话的组件。"""
     session = CommentSession()
     detector = ChaoxingTaskDetector(browser, comment_session=session)
     generator = LLMCommentBodyGenerator(

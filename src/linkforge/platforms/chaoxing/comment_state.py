@@ -1,4 +1,4 @@
-"""Session-scoped state for optimistic Chaoxing comment attempts."""
+"""乐观的学习通评论尝试的会话级状态。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ COMMENT_MODULE_PATH = "/ananas/modules/insertbbs/"
 
 
 class CommentOutcome(Enum):
-    """A local handling result; none claims platform-confirmed publication."""
+    """本地的处理结果；任何值都不声明平台已确认发布。"""
 
     ATTEMPTED_UNVERIFIED = "attempted_unverified"
     SUBMISSION_UNKNOWN = "submission_unknown"
@@ -21,7 +21,7 @@ class CommentOutcome(Enum):
 
 @dataclass(frozen=True, slots=True)
 class CommentIdentity:
-    """A discussion identity bound to course, account context, knowledge and Card."""
+    """绑定到课程、账号上下文、知识节点和 Card 的讨论身份。"""
 
     account_context: str
     course_id: str
@@ -41,15 +41,15 @@ class CommentRecord:
 
 
 class CommentIdentityError(RuntimeError):
-    """The current discussion cannot be identified without ambiguity."""
+    """当前讨论无法无歧义地识别。"""
 
 
 class CommentAccountChangedError(CommentIdentityError):
-    """A session record was reused after the account context changed."""
+    """账号上下文更改后复用了会话记录。"""
 
 
 class CommentSession:
-    """In-memory, per-application-run record shared by detector and handlers."""
+    """检测器与各处理器共享的、按应用运行保存在内存中的记录。"""
 
     def __init__(self) -> None:
         self._account_context: str | None = None
@@ -67,6 +67,7 @@ class CommentSession:
         stage: str,
         reason: str | None = None,
     ) -> CommentRecord:
+        """记录一次处理结果并返回对应记录，同时绑定账号上下文。"""
         self._bind_account(identity.account_context)
         item = CommentRecord(identity=identity, outcome=outcome, stage=stage, reason=reason)
         self._records[identity] = item
@@ -90,7 +91,7 @@ def comment_identity(
     state: ChaoxingPageState,
     module_index: int,
 ) -> CommentIdentity:
-    """Build a strict course-side identity without depending on a popup topic ID."""
+    """构建严格的课程侧身份，不依赖弹窗的话题 ID。"""
     if state.knowledge_id is None:
         raise CommentIdentityError("The Chaoxing knowledge identity is unavailable.")
     if module_index < 0 or module_index >= len(state.modules):

@@ -1,13 +1,13 @@
-"""Agent orchestration exceptions."""
+"""智能体编排异常。"""
 
 
 class AgentLoopError(RuntimeError):
-    """Base exception for agent-loop failures."""
+    """智能体循环失败的基础异常。"""
 
 
 class MaxStepsExceededError(AgentLoopError):
-    """Raised when an agent loop does not finish within its step limit."""
+    """当智能体循环未在其步数限制内结束时抛出。"""
 
 
 class AgentDecisionError(AgentLoopError):
-    """Raised when an agent cannot produce a valid browser decision."""
+    """当智能体无法产生有效的浏览器决策时抛出。"""

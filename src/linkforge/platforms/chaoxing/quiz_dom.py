@@ -1,4 +1,4 @@
-"""Question-scoped inspection and idempotent normal UI option selection."""
+"""以题目为作用域的检查与幂等的正常 UI 选项选择。"""
 
 import json
 import logging
@@ -26,7 +26,7 @@ QUIZ_MODULE_PATH = "/ananas/modules/work/"
 QUESTION_FRAME_PATH = "/mooc-ans/work/doHomeWorkNew"
 QUESTION_SELECTOR = ".TiMu.newTiMu"
 _CONTROLS = '[role="radio"], [role="checkbox"], input[type="radio"], input[type="checkbox"]'
-# A role wrapper with a native input is one option, not two.
+# 带原生 input 的 role 包裹器是一个选项，而不是两个。
 OPTION_SELECTOR = f":is({_CONTROLS}):not(:is({_CONTROLS}) :is({_CONTROLS}))"
 logger = logging.getLogger(__name__)
 _QUESTION_SCRIPT = r"""element => ({
@@ -63,7 +63,7 @@ _OPTION_SCRIPT = """element => {
 
 
 class QuizDOMQuestion:
-    """Own a stable question-local letter mapping for the duration of one scope."""
+    """在一个作用域的有效期内持有稳定的、题目局部的字母映射。"""
 
     def __init__(self, element: BrowserElement, index: int) -> None:
         self.element = element
@@ -125,8 +125,8 @@ class QuizDOMQuestion:
         hidden_values = self._metadata()["hidden_answers"]
         hidden = hidden_values[0] if hidden_values else None
         radio = question_type is not QuizQuestionType.MULTIPLE_CHOICE
-        # Interpret multi-answer and boolean encodings only with the observed
-        # Chaoxing marker/data contract; unrelated hidden fields remain opaque.
+        # 只依据观察到的 Chaoxing marker/data 契约解释多选和布尔编码；
+        # 无关的隐藏字段保持不透明。
         hidden_selected = None
         marker_mapping = all(state.get("marker_count", 0) == 1 for state in states)
         if marker_mapping and hidden is not None:

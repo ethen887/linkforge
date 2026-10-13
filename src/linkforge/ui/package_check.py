@@ -1,4 +1,4 @@
-"""Explicit, offline packaged-app diagnostic using only disposable test data."""
+"""使用一次性测试数据进行的、明确的离线打包应用诊断。"""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ class _EmptyCredentials:
 
 
 def run_package_check(application: QApplication, report_path: Path, log_file: Path) -> int:
-    """Write a report and screenshot; never open courses or read user settings/keys."""
+    """写入报告和截图；绝不打开课程或读取用户设置/密钥。"""
     results: dict[str, object] = {"frozen": bool(getattr(sys, "frozen", False))}
     report_path = report_path.resolve()
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -49,8 +49,8 @@ def run_package_check(application: QApplication, report_path: Path, log_file: Pa
                 raise RuntimeError("QSettings reload failed")
             results["settings"] = "passed"
             window = MainWindow(settings_store=reloaded, log_dir=log_file.parent)
-            # Render a hidden widget with the native Windows font engine. The offscreen
-            # Qt backend on Windows can render every glyph as a box despite a valid build.
+            # 使用 Windows 原生字体引擎渲染隐藏控件。即使构建有效，
+            # Windows 上的离屏 Qt 后端也可能把所有字形渲染成方块。
             window.ensurePolished()
             central_widget = window.centralWidget()
             if central_widget is None:
@@ -74,7 +74,7 @@ def run_package_check(application: QApplication, report_path: Path, log_file: Pa
                 results["credentials"] = "passed"
                 results["credential_backend"] = type(backend).__module__
             finally:
-                # This unique entry belongs only to this check, never to the user.
+                # 这一唯一条目仅属于本次检查，与用户无关。
                 if backend.get_password(service, username) is not None:
                     backend.delete_password(service, username)
 
@@ -83,7 +83,7 @@ def run_package_check(application: QApplication, report_path: Path, log_file: Pa
                 if getattr(sys, "frozen", False):
                     if not executable.is_relative_to(Path(sys.executable).resolve().parent):
                         raise RuntimeError("Chromium resolved outside the bundle")
-                # channel=chromium uses the full browser, including in headless mode.
+                # 使用 channel=chromium 会调用完整浏览器，包括在无头模式下。
                 for attempt in range(2):
                     context = playwright.chromium.launch_persistent_context(
                         str(root / "profile"), headless=True, channel="chromium"

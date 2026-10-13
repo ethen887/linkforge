@@ -1,4 +1,4 @@
-"""Translate internal failures into safe, actionable Chinese UI messages."""
+"""将内部失败转化为安全、可操作的简体中文界面消息。"""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def _first(causes: tuple[BaseException, ...], kind: type[BaseException]) -> Base
 
 
 def user_error_message(exc: BaseException) -> UserErrorMessage:
-    """Return a Chinese explanation without exposing provider response bodies."""
+    """返回中文说明，不暴露服务商响应内容。"""
     causes = _causes(exc)
 
     model_error = _first(causes, ModelRequestError)

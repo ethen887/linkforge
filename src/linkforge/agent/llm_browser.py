@@ -1,4 +1,4 @@
-"""LLM-backed browser-agent decision implementation."""
+"""基于 LLM 的浏览器智能体决策实现。"""
 
 import json
 from typing import Any
@@ -137,14 +137,14 @@ _BROWSER_ACTION_TOOLS: list[dict[str, Any]] = [
 
 
 class LLMBrowserAgent(BrowserAgent):
-    """Choose one browser decision with one provider-neutral LLM request."""
+    """通过一次与提供商无关的 LLM 请求选择一个浏览器决策。"""
 
     def __init__(self, *, llm: LLM, model: str) -> None:
         self._llm = llm
         self._model = model
 
     def decide(self, observation: Observation) -> BrowserDecision:
-        """Return exactly one decision from exactly one model inference."""
+        """从恰好一次模型推理中返回恰好一个决策。"""
         messages = [
             LLMMessage(role="system", content=_SYSTEM_PROMPT),
             LLMMessage(role="user", content=self._serialize_observation(observation)),

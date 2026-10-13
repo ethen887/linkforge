@@ -1,4 +1,4 @@
-"""Build a reopenable course URL from a verified Chaoxing card snapshot."""
+"""根据已验证的学习通卡片快照构建可重新打开的课程 URL。"""
 
 from urllib.parse import parse_qs, quote, unquote_plus, urlsplit, urlunsplit
 
@@ -6,11 +6,11 @@ from linkforge.platforms.chaoxing.models import ChaoxingPageState
 
 
 def course_resume_url(page_url: str, state: ChaoxingPageState) -> str | None:
-    """Preserve course routing parameters, replacing the chapter and card only.
+    """保留课程路由参数，仅替换章节与卡片部分。
 
-    Card navigation can replace an iframe without updating the address bar.
-    Save the outer studentstudy route, never a bare cards/video iframe URL.
-    Keep unrelated query components verbatim, including encoded auth values.
+    卡片导航可能在不更新地址栏的情况下替换 iframe。
+    应保存外层的 studentstudy 路由，绝不保存裸的 cards/video iframe URL。
+    与路由无关的查询组件（包括编码后的认证值）应原样保留。
     """
     page = urlsplit(page_url)
     if (

@@ -1,4 +1,4 @@
-"""Validated V1 question and answer contracts; DOM text is never solver input."""
+"""校验过的 V1 题目与答案契约；DOM 文本永不作为解题器输入。"""
 
 import re
 from dataclasses import dataclass
@@ -10,22 +10,25 @@ from linkforge.platforms.chaoxing.exceptions import ChaoxingQuizAnswerError, Cha
 
 
 class QuizQuestionType(Enum):
+    """支持的题型：单选、多选、判断题。"""
+
     SINGLE_CHOICE = "SINGLE_CHOICE"
     MULTIPLE_CHOICE = "MULTIPLE_CHOICE"
     TRUE_FALSE = "TRUE_FALSE"
 
 
 def option_letters(count: int) -> tuple[str, ...]:
+    """为 count 个选项返回按序的 A-Z 大写字母元组；count 须在 1 到 26 之间。"""
     if not 1 <= count <= 26:
         raise ChaoxingQuizStateError(f"Question must have 1 to 26 options; received {count}.")
     return tuple(ascii_uppercase[:count])
 
 
 def parse_question_type(title: str, roles: tuple[str, ...]) -> QuizQuestionType | None:
-    """Read only the heading's type prefix, never classify from question semantics.
+    """只读取标题的题型前缀，绝不由题目语义推断题型。
 
-    Radio semantics cannot distinguish single-choice from true/false, so without
-    a legible heading they remain unknown for Vision to disambiguate.
+    单选（radio）语义无法区分单选题与判断题，因此若没有可读的标题，
+    就保持未知，交由 Vision 来区分。
     """
     match = re.match(
         r"^\s*(?:\d+\s*[.．、]\s*)?[（(【\[]?\s*"
@@ -58,6 +61,8 @@ def parse_question_type(title: str, roles: tuple[str, ...]) -> QuizQuestionType 
 
 @dataclass(frozen=True, slots=True)
 class QuizQuestion:
+    """一道已捕获的题目：索引、题型提示、选项字母与题目截图。"""
+
     index: int
     question_type: QuizQuestionType | None
     option_letters: tuple[str, ...]
@@ -66,6 +71,8 @@ class QuizQuestion:
 
 @dataclass(frozen=True, slots=True)
 class QuizAnswer:
+    """一道题的答案：题型与选中选项的大写字母元组。"""
+
     question_type: QuizQuestionType
     choices: tuple[str, ...]
 
@@ -83,6 +90,7 @@ class QuizAnswer:
 
 
 def validate_answer(question: QuizQuestion, answer: QuizAnswer) -> QuizAnswer:
+    """校验答案与题目的题型、选项一致性，通过则返回该答案。"""
     if not isinstance(answer, QuizAnswer):
         raise ChaoxingQuizAnswerError("Solver did not return a QuizAnswer.")
     if question.question_type is not None and question.question_type is not answer.question_type:

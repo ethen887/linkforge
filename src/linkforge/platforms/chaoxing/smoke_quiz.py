@@ -1,6 +1,6 @@
-"""Full automatic real Chaoxing vertical E2E smoke.
+"""真实学习通课程纵向 E2E 冒烟测试的完整全自动流程。
 
-Fixed smoke workflow:
+固定冒烟工作流：
 
     2.5 相对运动
         Card 1 概述
@@ -11,38 +11,38 @@ Fixed smoke workflow:
             ↓
         next knowledge
 
-This smoke intentionally performs real side effects:
+本冒烟测试会真实执行副作用：
 
-- Video:
-    plays normally for the requested smoke duration, default 8 seconds.
-    It does not seek, change playback rate, or forge completion.
+- 视频：
+    按请求的冒烟时长正常播放，默认 8 秒。
+    不拖动进度、不改播放倍速、不伪造完成。
 
-- Quiz:
-    captures each real question screenshot,
-    calls the configured Vision LLM,
-    selects the returned options,
-    verifies selection state,
-    submits through normal visible UI,
-    handles the visible confirmation,
-    and waits for the production handler's completion verification.
+- 测验：
+    为每道真实题目截图，
+    调用配置的 Vision LLM，
+    选中返回的选项，
+    核实验选状态，
+    通过正常可见 UI 提交，
+    处理可见的确认框，
+    并等待生产 Handler 的完成校验。
 
-- Comment:
-    calls the configured LLM,
-    fills the real reply editor,
-    and submits through the production Comment handler.
+- 评论：
+    调用配置的 LLM，
+    填写真实回复编辑器，
+    并通过生产 Comment Handler 提交。
 
-- Navigation:
-    exercises the existing Content / Document / Comment / Quiz logic
-    and finally verifies that the course leaves the starting knowledge.
+- 导航：
+    复用现有 Content / Document / Comment / Quiz 逻辑，
+    最后校验课程已离开起始 knowledge。
 
-No input().
-No manual clicking.
-No manual scrolling.
-No direct Chaoxing HTTP submission API.
-No forged ans-job-finished.
-No artificial task completion.
+无 input()。
+无手动点击。
+无手动滚动。
+无直接调用学习通 HTTP 提交 API。
+无伪造 ans-job-finished。
+无人工任务完成。
 
-This is a destructive local smoke test and must not run in CI.
+这是破坏性的本地冒烟测试，严禁在 CI 中运行。
 """
 
 from __future__ import annotations
@@ -366,18 +366,17 @@ VIDEO_PLAY_SCRIPT = r"""async () => {
 
 
 class SmokeError(RuntimeError):
-    """Known failure in this destructive E2E smoke."""
+    """本破坏性 E2E 冒烟测试中的已知失败。"""
 
 
 class SmokeForcedCommentDetector(ChaoxingTaskDetector):
-    """Smoke-only adapter for re-testing the fixed Card-5 discussion.
+    """用于复测固定 Card 5 讨论的仅冒烟用适配器。
 
-    The production detector stays authoritative everywhere except the fixed
-    discussion Card. If the real supported discussion DOM is present but the
-    production detector returns CONTENT/UNKNOWN because this sample was already
-    handled, the smoke temporarily reports COMMENT for this run only.
+    除固定讨论 Card 外，生产 Detector 仍是权威。若真实支持的讨论 DOM 存在，
+    但生产 Detector 因该样本已被处理而返回 CONTENT/UNKNOWN，则冒烟测试仅在本
+    次运行中临时返回 COMMENT。
 
-    It never modifies Chaoxing DOM, finished markers, or network state.
+    它从不修改 Chaoxing DOM、完成标记或网络状态。
     """
 
     def __init__(
@@ -477,7 +476,7 @@ class SmokeForcedCommentDetector(ChaoxingTaskDetector):
 
 
 class VisibleSmokeBrowser(PlaywrightBrowser):
-    """PlaywrightBrowser with smoke-only robust Card navigation."""
+    """带有仅冒烟用稳健 Card 导航的 PlaywrightBrowser。"""
 
     def smoke_click_card_and_wait_document_replacement(
         self,
@@ -485,7 +484,7 @@ class VisibleSmokeBrowser(PlaywrightBrowser):
         *,
         timeout_seconds: float,
     ) -> None:
-        """Click one Card and wait for the cards Document to be replaced."""
+        """点击一个 Card，并等待该 cards Document 被替换。"""
         page = self._require_page()
 
         navigation_frames: list[tuple[Frame, Locator]] = []
@@ -580,7 +579,7 @@ class VisibleSmokeBrowser(PlaywrightBrowser):
 
 
 class SmokeQuizSubmitter:
-    """Perform the irreversible Quiz boundary through normal visible UI."""
+    """通过正常可见 UI 执行不可逆的 Quiz 提交边界。"""
 
     def __init__(
         self,
@@ -601,7 +600,7 @@ class SmokeQuizSubmitter:
         *,
         module_url: str,
     ) -> None:
-        """Click the real submit control once and handle its confirmation."""
+        """点击一次真实提交控件，并处理其确认流程。"""
         if not isinstance(
             browser,
             PlaywrightBrowser,
@@ -649,8 +648,7 @@ class SmokeQuizSubmitter:
             print()
             print("[Quiz Submit] 执行真实提交 click。")
 
-            # Do not automatically retry this
-            # irreversible click.
+            # 不要自动重试这次不可逆的点击。
             submit.click(timeout=round(self._timeout_seconds * 1000))
 
             self._confirmation_loop(
@@ -1319,7 +1317,7 @@ def run_documents(
     *,
     timeout_seconds: float,
 ) -> int:
-    """Run production DocumentHandler once per detected document."""
+    """对每个检测到的文档各运行一次生产 DocumentHandler。"""
     count = 0
 
     deadline = time.monotonic() + timeout_seconds
@@ -1428,7 +1426,7 @@ def play_real_video_for_seconds(
     seconds: float,
     timeout_seconds: float,
 ) -> None:
-    """Play real media and verify real currentTime progression."""
+    """播放真实媒体，并校验真实的 currentTime 进度。"""
     initial = wait_for_video_element(
         browser,
         timeout_seconds=timeout_seconds,
@@ -1500,7 +1498,7 @@ def advance_after_smoke_video(
     *,
     timeout_seconds: float,
 ) -> None:
-    """Continue regression coverage after the intentionally short video smoke."""
+    """在故意缩短的视频冒烟之后，继续回归覆盖。"""
     task = detector.detect()
 
     if task is TaskType.CONTENT:
@@ -1698,18 +1696,18 @@ def advance_quiz_after_answers(
     timeout_seconds: float,
     max_next_clicks: int = 4,
 ) -> None:
-    """Advance an answered Quiz in the fixed already-completed smoke sample.
+    """在已完成的固定冒烟样本中推进已作答的 Quiz。
 
-    The real sample may not expose an initial Submit button after the task has
-    already been completed. The observed normal UI exposes a Next control.
+    真实样本在任务已经完成后，可能不会暴露初始的 Submit 按钮。
+    观察到的正常 UI 会暴露一个 Next 控件。
 
-    Strategy:
-    - after production answer_all(), click only an unambiguous in-Quiz Next;
-    - after every click, observe real Card/task state;
-    - if Quiz becomes CONTENT, let production ContentHandler advance normally;
-    - if the UI still stays on the already-completed Quiz after bounded Next
-      clicks, perform one normal visible Card-5 click so the smoke can continue
-      regression coverage. No finished/task state is forged.
+    策略：
+    - 生产 answer_all() 之后，只点击无歧义的 Quiz 内 Next；
+    - 每次点击后观察真实的 Card/任务状态；
+    - 若 Quiz 变成 CONTENT，则让生产 ContentHandler 正常前进；
+    - 若在有界的 Next 点击次数后仍停留在已完成的 Quiz 上，
+      则执行一次正常的可见 Card 5 点击，好让冒烟继续回归覆盖。
+      不伪造任何 finished/任务状态。
     """
 
     for attempt in range(1, max_next_clicks + 1):
@@ -2043,7 +2041,7 @@ def main() -> int:
             )
 
             # ========================================================
-            # Card 1: CONTENT
+            # Card 1：CONTENT
             # ========================================================
 
             stage("阶段 1：概述 -> PPT")
@@ -2065,7 +2063,7 @@ def main() -> int:
             )
 
             # ========================================================
-            # Card 2: DOCUMENT
+            # Card 2：DOCUMENT
             # ========================================================
 
             stage("阶段 2：PPT / Document")
@@ -2095,7 +2093,7 @@ def main() -> int:
             )
 
             # ========================================================
-            # Card 3: VIDEO
+            # Card 3：VIDEO
             # ========================================================
 
             stage(f"阶段 3：Video {args.video_seconds:g}s")
@@ -2128,7 +2126,7 @@ def main() -> int:
             )
 
             # ========================================================
-            # Card 4: QUIZ
+            # Card 4：QUIZ
             # ========================================================
 
             stage("阶段 4：Vision Quiz 真正答题 + Next")
@@ -2172,7 +2170,7 @@ def main() -> int:
             )
 
             # ========================================================
-            # Card 5: COMMENT
+            # Card 5：COMMENT
             # ========================================================
 
             stage("阶段 5：Comment 真正生成 + 提交")
@@ -2210,7 +2208,7 @@ def main() -> int:
                 raise SmokeError("Comment 处理后 Detector 未变为 CONTENT。")
 
             # ========================================================
-            # NEXT KNOWLEDGE
+            # 下一章节（NEXT KNOWLEDGE）
             # ========================================================
 
             stage("阶段 6：进入下一章节")

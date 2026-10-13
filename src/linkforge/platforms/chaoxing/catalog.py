@@ -1,4 +1,4 @@
-"""Completion evidence for an entire Chaoxing knowledge node."""
+"""整个学习通知识节点的完成证据。"""
 
 from urllib.parse import parse_qs, urlsplit
 
@@ -16,10 +16,10 @@ CATALOG_STATE_SCRIPT = """
 
 
 def knowledge_is_completed(results: tuple[object, ...], card_url: str) -> bool:
-    """Require a unique active node matching the loaded card and an explicit check.
+    """要求存在唯一的活动节点，且与已加载卡片一致并给出明确的完成标记。
 
-    Missing catalogs provide no completion evidence. A present but inconsistent
-    catalog fails closed, including during navigation between knowledge nodes.
+    目录缺失时没有完成证据。目录存在但不一致时按未完成处理，包括在知识节点
+    之间导航期间。
     """
     catalogs: list[list[object]] = []
     for result in results:

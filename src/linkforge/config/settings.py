@@ -1,5 +1,5 @@
 """
-LinkForge configuration models and built-in provider definitions.
+LinkForge 配置模型与内置服务商定义。
 
 本模块负责定义 LinkForge 各基础设施模块使用的配置数据结构。
 
@@ -75,7 +75,7 @@ class BrowserConfig:
             raise ValueError("profile_dir must not be empty")
 
 
-# Built-in model provider configurations.
+# 内置模型服务商配置。
 MODEL_PROVIDERS: dict[str, dict[str, Any]] = {
     "qwen": {
         "display_name": "阿里云百炼",

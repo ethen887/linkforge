@@ -1,4 +1,4 @@
-"""Browser-agent decision interface."""
+"""浏览器智能体决策接口。"""
 
 from abc import ABC, abstractmethod
 
@@ -7,9 +7,9 @@ from linkforge.observation.models import Observation
 
 
 class BrowserAgent(ABC):
-    """Choose the next browser action from the current observation."""
+    """根据当前观察结果选择下一个浏览器动作。"""
 
     @abstractmethod
     def decide(self, observation: Observation) -> BrowserDecision:
-        """Return the next action or signal normal completion."""
+        """返回下一个动作或标记正常完成。"""
         raise NotImplementedError

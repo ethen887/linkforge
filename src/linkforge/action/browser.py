@@ -1,4 +1,4 @@
-"""Browser-backed action executor."""
+"""基于浏览器的动作执行器。"""
 
 from typing import assert_never
 
@@ -17,13 +17,13 @@ from linkforge.browser.exceptions import BrowserError
 
 
 class BrowserActionExecutor(ActionExecutor):
-    """Execute structured actions through the Browser abstraction."""
+    """通过 Browser 抽象层执行结构化动作。"""
 
     def __init__(self, browser: Browser) -> None:
         self._browser = browser
 
     def execute(self, action: Action) -> None:
-        """Map an action to its corresponding Browser operation."""
+        """将一个动作映射到对应的 Browser 操作。"""
         try:
             if isinstance(action, OpenAction):
                 self._browser.open(action.url)

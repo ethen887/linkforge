@@ -1,4 +1,4 @@
-"""Course-task detection and dispatch lifecycle."""
+"""课程任务检测与分派生命周期。"""
 
 import logging
 import time
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class TaskType(Enum):
-    """Course task types understood by the application runtime."""
+    """应用运行时能够识别的课程任务类型。"""
 
     VIDEO = "video"
     DOCUMENT = "document"
@@ -22,29 +22,29 @@ class TaskType(Enum):
 
 
 class TaskDetector(ABC):
-    """Detect the current course task from application-visible state."""
+    """从应用可见的状态中检测当前课程任务。"""
 
     @abstractmethod
     def detect(self) -> TaskType:
-        """Return the task currently presented to the application."""
+        """返回当前呈现给应用的任务。"""
         raise NotImplementedError
 
 
 class TaskHandler(ABC):
-    """Complete one task of a specific type and return control to the runner."""
+    """完成一个特定类型的任务，并将控制权交还给运行器。"""
 
     @abstractmethod
     def run(self) -> None:
-        """Run the current task until it is complete."""
+        """运行当前任务直至其完成。"""
         raise NotImplementedError
 
 
 class UnknownTaskError(RuntimeError):
-    """Raised when the current course task cannot be identified."""
+    """当当前课程任务无法被识别时抛出。"""
 
 
 class TaskRunner:
-    """Own detection and dispatch for the complete course-task lifecycle."""
+    """负责完整课程任务生命周期中的检测与分派。"""
 
     def __init__(
         self,
@@ -75,7 +75,7 @@ class TaskRunner:
         self._sleep = sleep
 
     def run(self, *, should_stop: Callable[[], bool] | None = None) -> None:
-        """Dispatch tasks until completion or a stop request at a task boundary."""
+        """分派任务直至完成或在任务边界处收到停止请求。"""
         while True:
             if should_stop is not None and should_stop():
                 logger.info("Task runner stopped at task boundary")

@@ -1,4 +1,4 @@
-"""Browser-agent loop orchestration."""
+"""浏览器智能体循环编排。"""
 
 from linkforge.action.base import ActionExecutor
 from linkforge.agent.browser import BrowserAgent
@@ -8,7 +8,7 @@ from linkforge.observation.base import Observer
 
 
 class BrowserAgentLoop:
-    """Coordinate the observe-decide-execute browser lifecycle."""
+    """协调「观察-决策-执行」的浏览器生命周期。"""
 
     def __init__(
         self,
@@ -22,7 +22,7 @@ class BrowserAgentLoop:
         self._executor = executor
 
     def run(self, *, max_steps: int = 10) -> None:
-        """Run until the agent finishes or the maximum decision count is reached."""
+        """运行直至智能体完成或达到最大决策次数。"""
         if max_steps <= 0:
             raise ValueError("max_steps must be greater than 0")
 

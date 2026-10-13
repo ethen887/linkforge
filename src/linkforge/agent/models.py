@@ -1,4 +1,4 @@
-"""Data models for browser-agent decisions."""
+"""浏览器智能体决策的数据模型。"""
 
 from dataclasses import dataclass
 
@@ -7,7 +7,7 @@ from linkforge.action.models import Action
 
 @dataclass(frozen=True, slots=True)
 class FinishDecision:
-    """Signal that a browser task completed normally."""
+    """标记浏览器任务已正常完成。"""
 
 
 type BrowserDecision = Action | FinishDecision

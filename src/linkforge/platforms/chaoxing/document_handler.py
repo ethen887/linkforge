@@ -1,4 +1,4 @@
-"""Deterministic continuous-scroll handling for Chaoxing PDF and innerbook modules."""
+"""学习通 PDF 与电子书（innerbook）模块的确定性连续滚动处理。"""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChaoxingDocumentTaskHandler(TaskHandler):
-    """Handle one pending document, then return to the runner."""
+    """处理一个待处理的文档，然后交还给运行器。"""
 
     def __init__(
         self,
@@ -94,7 +94,7 @@ class ChaoxingDocumentTaskHandler(TaskHandler):
         self._sleeper = sleeper
 
     def run(self) -> None:
-        """Process exactly one document with its supported viewer contract."""
+        """按照受支持的查看器协议，精确处理一个文档。"""
         logger.info("Document handler started")
         try:
             self._run()
@@ -104,6 +104,7 @@ class ChaoxingDocumentTaskHandler(TaskHandler):
         logger.info("Document handler completed")
 
     def _run(self) -> None:
+        """处理当前卡片中第一个待处理的文档，直到其完成（或超时）。"""
         started_at = self._clock()
         deadline = started_at + self._timeout_seconds if self._timeout_seconds is not None else None
         inspection = self._inspect()
@@ -242,6 +243,7 @@ class ChaoxingDocumentTaskHandler(TaskHandler):
         self,
         inspection: ChaoxingDocumentInspection,
     ) -> ChaoxingDocumentModuleState | InnerbookTarget | None:
+        """查找当前卡片中第一个待处理的 PDF 或电子书目标，找不到返回 None。"""
         for module_index, raw_module in enumerate(inspection.modules):
             module_url, has_job_icon, finished = parse_module_basics(raw_module)
             if module_index in inspection.handled_video_indices:

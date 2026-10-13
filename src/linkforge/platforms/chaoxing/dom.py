@@ -1,4 +1,4 @@
-"""Validated Chaoxing DOM inspection used by detector and task handlers."""
+"""供检测器与任务处理器使用的、经过校验的学习通 DOM 检查工具。"""
 
 from __future__ import annotations
 
@@ -361,7 +361,7 @@ CHAOXING_CARD_STATE_SCRIPT = (
 def inspect_chaoxing_page(
     browser: Browser,
 ) -> ChaoxingPageState:
-    """Read and validate one dynamic Chaoxing page snapshot."""
+    """读取并校验一个动态学习通页面的快照。"""
     try:
         frame_results = browser.evaluate_in_frames(CHAOXING_STATE_SCRIPT)
     except BrowserError as exc:
@@ -455,7 +455,7 @@ def inspect_chaoxing_page(
 def first_pending_module(
     state: ChaoxingPageState,
 ) -> ChaoxingModuleState | None:
-    """Return the first module not proven complete by its task marker."""
+    """返回首个未被其任务标记证明已完成的学习通模块。"""
     for module in state.modules:
         if module.has_job_icon and module.finished:
             continue
@@ -469,7 +469,7 @@ def build_document_scroll_script(
     object_id: str,
     delta_y: int,
 ) -> str:
-    """Build a scroll action restricted to one real PDF viewer frame."""
+    """构建一个限定于单个真实 PDF 阅读器 frame 的滚动动作。"""
     encoded_object_id = json.dumps(object_id)
     encoded_delta_y = json.dumps(delta_y)
 
@@ -512,8 +512,7 @@ def _parse_knowledge_id(
 
     values = parse_qs(parsed_url.query).get("knowledgeid")
 
-    # Local data-URL fixtures encode the Chaoxing
-    # route in the fragment.
+    # 局部 data-URL 测试夹具会把学习通路由编码在 fragment 中。
     if values is None and "?" in parsed_url.fragment:
         values = parse_qs(parsed_url.fragment.partition("?")[2]).get("knowledgeid")
 

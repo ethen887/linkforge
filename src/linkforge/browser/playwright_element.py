@@ -1,4 +1,4 @@
-"""Playwright implementation of document-bound BrowserElement references."""
+"""Playwright 对文档绑定的 BrowserElement 引用的实现。"""
 
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -67,6 +67,12 @@ def _under(frame: Frame, ancestor: Frame) -> bool:
 def element_scope(
     page: Page, frame_url_contains: str, selector: str, *, ancestor_url: str, include_ancestor: bool = False
 ) -> Iterator[tuple[BrowserElement, ...]]:
+    """在恰好一个后代 frame 中定位可交互元素并返回可用的 BrowserElement 集合。
+
+    要求恰好匹配一个祖先 frame 和一个同样唯一的后代 frame，否则抛出 BrowserError。
+    通过上下文管理器使用，退出时释放所有捕获元素的句柄；配合 include_ancestor
+    可在祖先 frame 本身成为目标时也参与匹配。
+    """
     handles: list[ElementHandle] = []
     try:
         ancestors = [frame for frame in page.frames if frame.url == ancestor_url]
@@ -86,7 +92,7 @@ def element_scope(
     try:
         yield elements
     finally:
-        # Navigated documents may already have disposed their remote handles.
+        # 导航后的文档可能已释放其远程句柄。
         for handle in handles:
             try:
                 handle.dispose()

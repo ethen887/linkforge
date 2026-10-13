@@ -1,4 +1,4 @@
-"""Qt worker-thread bridge for the synchronous LinkForge runtime."""
+"""为同步运行的 LinkForge 运行时提供的 Qt 工作线程桥接。"""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ _HANDLER_NAMES = {
 
 
 class RuntimeWorker(QObject):
-    """Create and execute one application on a background Qt thread."""
+    """在后台 Qt 线程上创建并执行一个应用实例。"""
 
     running = Signal()
     completed = Signal()
@@ -53,7 +53,7 @@ class RuntimeWorker(QObject):
 
     @Slot()
     def run(self) -> None:
-        """Build and synchronously run the application on the owning worker thread."""
+        """在所属的工作线程上构建并同步运行应用。"""
         try:
             config = replace(self._config, on_course_url_changed=self.course_url_changed.emit)
             application = self._application_factory(config)
@@ -78,7 +78,7 @@ class RuntimeWorker(QObject):
             self.finished.emit()
 
     def request_stop(self) -> None:
-        """Request the application's existing task-boundary stop behavior."""
+        """请求应用在现有的任务边界处安全停止。"""
         with self._lock:
             self._stop_requested = True
             application = self._application
@@ -91,7 +91,7 @@ class _LogEmitter(QObject):
 
 
 class GuiLogHandler(logging.Handler):
-    """Forward a safe, user-oriented subset of runtime records through Qt."""
+    """通过 Qt 转发安全且面向用户的一部分运行时日志记录。"""
 
     def __init__(self) -> None:
         super().__init__(level=logging.INFO)

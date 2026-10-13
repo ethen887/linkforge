@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 @dataclass
 class ToolCall:
+    """模型生成的工具调用，描述需要执行的函数及其参数。"""
+
     id: str
     name: str
     arguments: dict
@@ -15,7 +17,7 @@ type MessageRole = Literal["system", "user", "assistant", "tool"]
 
 @dataclass(frozen=True, slots=True)
 class LLMImage:
-    """In-memory image input; adapters own wire-format encoding."""
+    """内存中的图片输入；线上编码格式由各适配器负责。"""
 
     data: bytes = field(repr=False)
     media_type: Literal["image/png", "image/jpeg", "image/webp", "image/gif"] = "image/png"
@@ -27,12 +29,13 @@ class LLMImage:
             raise ValueError("Unsupported image media type")
 
     def base64_data(self) -> str:
+        """将图片字节编码为 ASCII 字符串形式的 base64 数据，供线上传输使用。"""
         return base64.b64encode(self.data).decode("ascii")
 
 
 @dataclass(frozen=True, slots=True)
 class LLMMessage:
-    """A provider-neutral message in a LinkForge model conversation."""
+    """与具体服务商无关的 LinkForge 模型对话消息。"""
 
     role: MessageRole
     content: str | None = None
@@ -46,6 +49,8 @@ class LLMMessage:
 
 
 class LLMResponse:
+    """归一化的模型调用结果，包含文本内容、工具调用与结束原因。"""
+
     def __init__(
         self,
         content: str | None = None,
@@ -59,8 +64,10 @@ class LLMResponse:
 
 
 class LLM:
+    """模型客户端的抽象基类，定义对话调用与 JSON 调用接口。"""
+
     def call_json_model(self, model: str, messages: list[LLMMessage]) -> LLMResponse:
-        """Request JSON; adapters may constrain output when capability is known."""
+        """请求 JSON 输出；在适配器确认支持时，可能会约束输出格式。"""
         return self.call_model(model, messages, [])
 
     def call_model(

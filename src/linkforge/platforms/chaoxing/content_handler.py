@@ -1,4 +1,4 @@
-"""Advance ordinary Chaoxing content without guessing course completion."""
+"""推进普通学习通课内内容，而无需猜测课程是否完成。"""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class ChaoxingContentHandlerConfig:
-    """Bounded wait used to verify a content navigation."""
+    """用于验证内容导航的有界等待参数。"""
 
     poll_interval_seconds: float = 0.25
     navigation_timeout_seconds: float = 15.0
@@ -50,7 +50,7 @@ class _NextKnowledgeTarget:
 
 
 class ChaoxingContentTaskHandler(TaskHandler):
-    """Advance to the next card, or the next knowledge node in DOM order."""
+    """推进到下一个卡片，或按 DOM 顺序的下一个知识节点。"""
 
     def __init__(
         self,
@@ -71,7 +71,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
         self._on_course_url_changed = on_course_url_changed
 
     def run(self) -> None:
-        """Navigate one CONTENT step and return control to TaskRunner."""
+        """推进一个 CONTENT 步骤，并将控制权交还给 TaskRunner。"""
         logger.info("Content handler started")
         try:
             self._run()
@@ -82,17 +82,16 @@ class ChaoxingContentTaskHandler(TaskHandler):
 
     def _run(self) -> None:
         """
-        Navigate one CONTENT step and return control to TaskRunner.
+        推进一个 CONTENT 步骤，并将控制权交还给 TaskRunner。
 
-        The initial snapshot provides navigation metadata and explicit catalog
-        completion evidence. A completed knowledge node bypasses remaining cards
-        only after fresh verification, including inside the eventual click.
+        初始快照提供了导航元数据以及明确的目录完成证据。一个已完成的
+        知识节点只有在重新验证（包括最终点击动作内部）之后，才会跳过
+        剩余的卡片。
 
-        Whether navigation is still safe is determined separately through
-        ChaoxingTaskDetector so ContentHandler shares exactly the same task
-        semantics as TaskRunner.
+        导航是否仍然安全，是通过 ChaoxingTaskDetector 单独判定的，
+        这样 ContentHandler 与 TaskRunner 就共享完全相同的任务语义。
 
-        This is important for ordinary PDF modules:
+        这对普通 PDF 模块至关重要：
 
             PDF viewer at real bottom
                     ↓
@@ -100,8 +99,8 @@ class ChaoxingContentTaskHandler(TaskHandler):
                     ↓
             ContentHandler may navigate
 
-        while an unread PDF, VIDEO, QUIZ, COMMENT, or unknown state still
-        prevents CONTENT navigation.
+        而仍未阅读的 PDF、VIDEO、QUIZ、COMMENT 或未知状态仍会阻止
+        CONTENT 导航。
         """
         initial_state = self._inspect_initial_state()
 
@@ -130,7 +129,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
     def _inspect_initial_state(
         self,
     ) -> ChaoxingPageState:
-        """Read the current card state required for deterministic navigation."""
+        """读取当前卡片状态，用于确定性导航。"""
         try:
             return inspect_chaoxing_page(self._browser)
 
@@ -141,17 +140,14 @@ class ChaoxingContentTaskHandler(TaskHandler):
         self,
     ) -> None:
         """
-        Verify the current task using the authoritative Chaoxing detector.
+        使用权威的 Chaoxing 检测器验证当前任务。
 
-        TaskRunner normally calls this handler only after detecting CONTENT.
-        The browser may nevertheless change between dispatch and handler
-        execution, so the handler performs fresh bounded detection immediately
-        before navigation.
+        TaskRunner 通常只在检测到 CONTENT 之后才调用此处理器。然而，
+        在派发与处理器执行之间浏览器可能发生变化，因此处理器会在
+        导航之前立即执行一次新的有界检测。
 
-        The detector is also the authoritative source for Document V1
-        completion semantics. In particular, PDFs without a platform job
-        marker are considered handled only after their real viewer reaches
-        the bottom.
+        检测器也是 Document V1 完成语义的权威来源。特别是，没有平台
+        任务标记的 PDF，只有在真实阅读器到达底部之后才被视为已完成。
         """
         deadline = self._monotonic() + self._config.navigation_timeout_seconds
 
@@ -191,7 +187,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
         self,
         initial_state: ChaoxingPageState,
     ) -> None:
-        """Click the next card and verify that the active card changes."""
+        """点击下一个卡片，并验证当前激活的卡片发生变化。"""
         try:
             self._browser.click(_NEXT_CARD_SELECTOR)
 
@@ -220,7 +216,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
         self,
         initial_state: ChaoxingPageState,
     ) -> None:
-        """Advance from the final card to the next knowledge node."""
+        """从最后一个卡片推进到下一个知识节点。"""
         knowledge_id = initial_state.knowledge_id
 
         if knowledge_id is None:
@@ -252,7 +248,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
         )
 
     def _report_course_progress(self, state: ChaoxingPageState) -> None:
-        """Publish only verified course navigation, without logging routing secrets."""
+        """仅发布经过验证的课程导航，且不记录路由相关的敏感信息。"""
         if self._on_course_url_changed is None:
             return
         try:
@@ -266,11 +262,11 @@ class ChaoxingContentTaskHandler(TaskHandler):
         self,
     ) -> ChaoxingPageState | None:
         """
-        Poll the current card state during navigation.
+        在导航期间轮询当前卡片状态。
 
-        iframe replacement is expected during Chaoxing navigation, so a
-        transient inspection failure does not immediately fail the handler.
-        The caller's bounded navigation deadline remains authoritative.
+        在 Chaoxing 导航过程中会出现 iframe 替换，因此一次瞬时的
+        检查失败不会立即终止处理器。调用方的有界导航截止时间仍然是
+        权威依据。
         """
         self._sleep(self._config.poll_interval_seconds)
 
@@ -284,7 +280,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
         self,
         knowledge_id: str,
     ) -> _NextKnowledgeTarget:
-        """Find the next knowledge node in real DOM document order."""
+        """按真实 DOM 文档顺序找到下一个知识节点。"""
         try:
             results = self._browser.evaluate_in_frames(_inspect_next_knowledge_script(knowledge_id))
 
@@ -346,7 +342,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
         knowledge_id: str,
         target: _NextKnowledgeTarget,
     ) -> None:
-        """Click the previously evidenced next knowledge target."""
+        """点击之前已确认的下一个知识目标。"""
         try:
             results = self._browser.evaluate_in_frames(
                 _click_next_knowledge_script(
@@ -398,7 +394,7 @@ def _unique_current_knowledge_result(
     *,
     phase: str,
 ) -> dict[object, object]:
-    """Require exactly one frame to contain the current knowledge node."""
+    """要求恰好有一个 frame 包含当前知识节点。"""
     matches: list[dict[object, object]] = []
 
     for result in results:
@@ -426,7 +422,7 @@ def _unique_current_knowledge_result(
 def _inspect_next_knowledge_script(
     knowledge_id: str,
 ) -> str:
-    """Build the deterministic knowledge-tree inspection script."""
+    """构建确定性的知识树检查脚本。"""
     current_id = json.dumps(f"cur{knowledge_id}")
 
     return f"""() => {{
@@ -472,7 +468,7 @@ def _click_next_knowledge_script(
     knowledge_id: str,
     target: _NextKnowledgeTarget,
 ) -> str:
-    """Build the deterministic real-DOM click script."""
+    """构建确定性的真实 DOM 点击脚本。"""
     current_id = json.dumps(f"cur{knowledge_id}")
 
     frame_url = _js_string(target.frame_url)
@@ -562,5 +558,5 @@ def _click_next_knowledge_script(
 def _js_string(
     value: str,
 ) -> str:
-    """Serialize a Python string safely for embedding in JavaScript."""
+    """安全地将 Python 字符串序列化，以便嵌入到 JavaScript 中。"""
     return json.dumps(value)

@@ -1,1 +1,1 @@
-"""LinkForge - A browser agent framework with explicit observation and action boundaries."""
+"""LinkForge —— 具有明确观察与动作边界的浏览器代理框架。"""

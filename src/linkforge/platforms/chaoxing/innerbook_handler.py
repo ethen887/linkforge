@@ -1,4 +1,4 @@
-"""Real scrolling with readiness and progress checks for the innerbook layout."""
+"""对内置图书布局执行真实的滚动，并检查就绪状态与进度。"""
 
 import logging
 import time
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChaoxingInnerbookReader:
-    """Process one known book without treating missing markers as completion."""
+    """处理一本已知图书，不把缺失标记当作已完成。"""
 
     def __init__(
         self,
@@ -59,6 +59,7 @@ class ChaoxingInnerbookReader:
         self._sleep = sleeper
 
     def read(self, target: InnerbookTarget) -> None:
+        """滚动目标内置图书直到完成，或在超时或失败时抛出对应异常。"""
         deadline = self._clock() + self._timeout if self._timeout is not None else None
         unavailable_since: float | None = self._clock()
         last_y: float | None = None
@@ -137,7 +138,7 @@ class ChaoxingInnerbookReader:
                         "Innerbook platform completion was not confirmed."
                     )
             else:
-                # Image loading has its own deadline; it is not mistaken for a scroll stall.
+                # 图片加载有其自身的时限，不会被误判为滚动停滞。
                 if unavailable_since is not None or last_y is None or viewer.scroll_y > last_y + 0.5:
                     progress_at = now
                     last_y = viewer.scroll_y

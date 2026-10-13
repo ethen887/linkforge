@@ -1,4 +1,4 @@
-"""Fail-closed normal-UI submission for Chaoxing Quiz tasks."""
+"""面向 Chaoxing Quiz 任务、失败即关闭的正常 UI 提交。"""
 
 import logging
 import time
@@ -85,7 +85,7 @@ class _Control:
 
 
 class ChaoxingQuizSubmitter:
-    """Submit one answered Quiz through unique visible controls, without retries."""
+    """通过唯一可见控件提交一道已作答的 Quiz，且不重试。"""
 
     def __init__(
         self,
@@ -103,7 +103,7 @@ class ChaoxingQuizSubmitter:
         self._monotonic = monotonic
 
     def submit(self, browser: Browser, *, module_url: str) -> None:
-        """Click one submit control and its unique DOM confirmation exactly once."""
+        """恰好一次点击一个提交控件及其唯一 DOM 确认。"""
         self._click_unique_submit(browser, module_url=module_url)
         self._click_unique_confirmation(browser, module_url=module_url)
 

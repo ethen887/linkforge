@@ -1,4 +1,4 @@
-"""Optimistic, submit-once Chaoxing comment handling."""
+"""学习通的乐观式、仅提交一次的评论处理。"""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ T = TypeVar("T")
 
 class CommentBodyGenerator(Protocol):
     def generate(self, *, title: str, prompt: str) -> str:
-        """Return one comment body from the minimal teacher-authored context."""
+        """根据最少量的教师撰写上下文，返回一条评论正文。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +69,7 @@ class ChaoxingCommentHandlerConfig:
 
 
 class LLMCommentBodyGenerator:
-    """Generate a comment through LinkForge's provider-neutral LLM interface."""
+    """通过 LinkForge 的与提供商无关的 LLM 接口生成评论。"""
 
     def __init__(self, *, llm: LLM, model: str, max_comment_chars: int = 1_000) -> None:
         if not model.strip() or max_comment_chars <= 0:
@@ -79,6 +79,7 @@ class LLMCommentBodyGenerator:
         self._max_comment_chars = max_comment_chars
 
     def generate(self, *, title: str, prompt: str) -> str:
+        """调用 LLM 生成一条不超过字数限制的中文讨论评论正文。"""
         messages = [
             LLMMessage(
                 role="system",
@@ -118,7 +119,7 @@ class _EntryContext:
 
 
 class ChaoxingCommentTaskHandler(TaskHandler):
-    """Attempt one supported discussion submission, then restore the course page."""
+    """尝试提交一次受支持的讨论，然后恢复课程页面。"""
 
     def __init__(
         self,
@@ -141,7 +142,7 @@ class ChaoxingCommentTaskHandler(TaskHandler):
         self.last_record: CommentRecord | None = None
 
     def run(self) -> None:
-        """Attempt one discussion submission and restore the course page."""
+        """尝试提交一次讨论并恢复课程页面。"""
         _LOGGER.info("Comment handler started")
         try:
             self._run()
@@ -151,6 +152,7 @@ class ChaoxingCommentTaskHandler(TaskHandler):
         _LOGGER.info("Comment handler completed")
 
     def _run(self) -> None:
+        """定位并提交一次讨论；提交后恢复原课程页面。"""
         target = self._current_target()
         if self._session.is_handled(target.identity):
             self.last_record = self._session.get(target.identity)
@@ -170,7 +172,7 @@ class ChaoxingCommentTaskHandler(TaskHandler):
             body = self._generate_body(entry)
             self._open_and_fill_editor(body)
 
-            # This record is written before the only call that may publish.
+            # 此记录在唯一可能发布的调用之前写入。
             self.last_record = self._session.record(
                 target.identity,
                 CommentOutcome.SUBMISSION_UNKNOWN,
@@ -303,7 +305,7 @@ class ChaoxingCommentTaskHandler(TaskHandler):
         def probe() -> bool | None:
             parsed = urlparse(self._browser.current_url())
 
-            # A popup can be observable before navigation settles.
+            # 弹窗可能在导航稳定之前就已可被观察到。
             if parsed.hostname is None:
                 return None
 
@@ -318,7 +320,7 @@ class ChaoxingCommentTaskHandler(TaskHandler):
             course_values = query.get("courseid")
             class_values = query.get("classid")
 
-            # Missing final routing values are treated as a transient loading state.
+            # 缺失的最终路由参数被当作瞬时加载状态来处理。
             if course_values is None or class_values is None:
                 return None
 

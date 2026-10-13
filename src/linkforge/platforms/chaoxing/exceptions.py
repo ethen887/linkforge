@@ -1,97 +1,97 @@
-"""Failures raised while handling deterministic Chaoxing course tasks."""
+"""处理确定性学习通课程任务时抛出的各类失败。"""
 
 
 class ChaoxingTaskError(RuntimeError):
-    """Base class for Chaoxing task handling failures."""
+    """学习通任务处理失败的基础异常类。"""
 
 
 class ChaoxingQuizError(ChaoxingTaskError):
-    """Base error for the screenshot-based quiz workflow."""
+    """基于截图的测验工作流的基础异常。"""
 
 
 class ChaoxingQuizStateError(ChaoxingQuizError):
-    """Quiz frames, question structure, or selection state are not reliable."""
+    """测验 frame、题目结构或选择状态不可靠。"""
 
 
 class ChaoxingQuizCaptureError(ChaoxingQuizError):
-    """The complete question could not be captured as an image."""
+    """完整的题目无法被截取为图像。"""
 
 
 class ChaoxingQuizAnswerError(ChaoxingQuizError):
-    """Question type or model answer is unsupported, inconsistent, or invalid."""
+    """题目类型或模型答案不受支持、不一致或无效。"""
 
 
 class ChaoxingQuizSolverError(ChaoxingQuizError):
-    """The vision model request failed."""
+    """视觉模型请求失败。"""
 
 
 class ChaoxingQuizSubmissionError(ChaoxingQuizError):
-    """Normal UI submission failed or its lifecycle has not been verified."""
+    """正常的 UI 提交失败或提交生命周期未得到验证。"""
 
 
 class ChaoxingQuizCompletionError(ChaoxingQuizError):
-    """Platform completion could not be independently verified."""
+    """平台完成状态无法被独立验证。"""
 
 
 class ChaoxingInspectionError(ChaoxingTaskError):
-    """The current Chaoxing DOM state cannot be read unambiguously."""
+    """当前学习通 DOM 状态无法被无歧义地读取。"""
 
 
 class VideoTaskError(ChaoxingTaskError):
-    """The current Chaoxing video task cannot be handled reliably."""
+    """当前学习通视频任务无法被可靠处理。"""
 
 
 class VideoPlaybackError(VideoTaskError):
-    """The target video cannot be started through normal media playback."""
+    """目标视频无法通过正常的媒体播放启动。"""
 
 
 class VideoTimeoutError(VideoTaskError):
-    """A video lifecycle deadline expired before platform completion."""
+    """视频生命周期在平台完成前已超时。"""
 
 
 class ContentNavigationError(ChaoxingTaskError):
-    """The current content cannot be advanced and verified reliably."""
+    """当前内容无法被可靠地前进并验证。"""
 
 
 class ChaoxingCommentError(ChaoxingTaskError):
-    """Base error for the supported Chaoxing comment workflow."""
+    """受支持的学习通评论工作流的基础异常。"""
 
 
 class ChaoxingCommentStateError(ChaoxingCommentError):
-    """The current discussion identity or DOM contract is ambiguous."""
+    """当前讨论的身份或 DOM 契约存在歧义。"""
 
 
 class ChaoxingCommentRecoveryError(ChaoxingCommentError):
-    """The original course page could not be restored reliably."""
+    """原始课程页面无法被可靠恢复。"""
 
 
 class ChaoxingCommentGenerationError(ChaoxingCommentError):
-    """A comment body could not be generated or validated."""
+    """评论正文无法被生成或验证。"""
 
 
 class ChaoxingDocumentError(ChaoxingTaskError):
-    """Base error for the deterministic Chaoxing document workflow."""
+    """确定性学习通文档工作流的基础异常。"""
 
 
 class ChaoxingDocumentInspectionError(ChaoxingDocumentError):
-    """Raised when browser-backed document inspection fails."""
+    """当基于浏览器的文档检查失败时抛出。"""
 
 
 class ChaoxingDocumentStateError(ChaoxingDocumentError):
-    """Raised when the observed document state violates the DOM contract."""
+    """当观察到的文档状态违背 DOM 契约时抛出。"""
 
 
 class ChaoxingDocumentNotFoundError(ChaoxingDocumentError):
-    """Raised when no pending document is present."""
+    """当没有待处理文档时抛出。"""
 
 
 class ChaoxingDocumentViewerReadyTimeoutError(ChaoxingDocumentError):
-    """Raised when the target PDF viewer does not become ready in time."""
+    """当目标 PDF 阅读器未及时就绪时抛出。"""
 
 
 class ChaoxingDocumentProgressTimeoutError(ChaoxingDocumentError):
-    """Raised when repeated real scroll actions make no observable progress."""
+    """当反复的真实滚动动作未产生可观察的进度时抛出。"""
 
 
 class ChaoxingDocumentTimeoutError(ChaoxingDocumentError):
-    """Raised when one document workflow exceeds its overall fault timeout."""
+    """当单个文档工作流超过其整体故障超时时抛出。"""

@@ -1,4 +1,4 @@
-"""Main LinkForge desktop window."""
+"""LinkForge 桌面主窗口。"""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ _PROVIDER_DISPLAY_NAMES = {
 
 
 class RuntimeState(Enum):
-    """User-visible runtime lifecycle states."""
+    """用户可见的运行时生命周期状态。"""
 
     IDLE = "空闲"
     STARTING = "正在启动"
@@ -56,7 +56,7 @@ class RuntimeState(Enum):
 
 
 class MainWindow(QMainWindow):
-    """Collect runtime configuration and supervise one worker at a time."""
+    """收集运行时配置，并同时监督一个工作线程。"""
 
     def __init__(
         self,
@@ -91,6 +91,7 @@ class MainWindow(QMainWindow):
 
     @property
     def state(self) -> RuntimeState:
+        """当前运行时生命周期状态。"""
         return self._state
 
     def _build_central_widget(self) -> QWidget:
@@ -266,6 +267,7 @@ class MainWindow(QMainWindow):
             self.model_edit.setText(str(MODEL_PROVIDERS[provider]["default_model"]))
 
     def _toggle_api_key(self, visible: bool) -> None:
+        """切换 API Key 的明文/掩码显示，并同步按钮文案。"""
         mode = QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password
         self.api_key_edit.setEchoMode(mode)
         self.api_key_toggle.setText("隐藏" if visible else "显示")
@@ -289,7 +291,7 @@ class MainWindow(QMainWindow):
         self._load_provider_api_key()
 
     def _load_provider_api_key(self) -> None:
-        # Clear the previous provider's key before any credential lookup.
+        # 在进行任何凭据查询前，先清空上一个服务商的密钥。
         self.api_key_edit.clear()
         self.api_key_toggle.setChecked(False)
         self._toggle_api_key(False)
@@ -444,6 +446,7 @@ class MainWindow(QMainWindow):
         scrollbar.setValue(scrollbar.maximum())
 
     def _clear_log(self) -> None:
+        """清空运行日志显示区域。"""
         self.log_edit.clear()
 
     def _open_log_directory(self) -> None:
