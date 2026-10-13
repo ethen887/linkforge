@@ -1,4 +1,4 @@
-"""DOM probes restricted to the observed Chaoxing continuous-scroll book reader."""
+"""仅限于所观察的学习通连续滚动图书阅读器的 DOM 探测。"""
 
 import json
 
@@ -62,7 +62,7 @@ INNERBOOK_VIEWER_SCRIPT = (
 def build_innerbook_action_script(
     module_path: tuple[int, ...], reader_path: tuple[int, ...], delta: int
 ) -> str:
-    """Reveal one outer module and scroll only its uniquely associated reader."""
+    """展开一个外层模块，并仅滚动与其唯一关联的阅读器。"""
     return (
         "() => {"
         + FRAME_PATH_SCRIPT

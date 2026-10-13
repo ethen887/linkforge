@@ -1,4 +1,4 @@
-"""Typed Chaoxing DOM state shared by deterministic platform adapters."""
+"""由确定性平台适配器共享的类型化学习通 DOM 状态。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ DOCUMENT_BOTTOM_TOLERANCE_PX = 8.0
 
 
 def _number(value: object, name: str) -> float:
-    """Validate and normalize one finite numeric DOM value."""
+    """校验并归一化单个有限的数值型 DOM 值。"""
     if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
         raise ValueError(f"{name} must be a finite number")
 
@@ -19,7 +19,7 @@ def _number(value: object, name: str) -> float:
 
 @dataclass(frozen=True, slots=True)
 class ChaoxingModuleState:
-    """One embedded module in DOM order inside the current content card."""
+    """当前内容卡片内按 DOM 顺序排列的一个内嵌模块。"""
 
     url: str
     has_job_icon: bool
@@ -29,7 +29,7 @@ class ChaoxingModuleState:
 
 @dataclass(frozen=True, slots=True)
 class ChaoxingVideoState:
-    """Provider-neutral HTMLMediaElement state from one video module frame."""
+    """来自某个视频模块 frame 的、与提供方无关的 HTMLMediaElement 状态。"""
 
     frame_url: str
     paused: bool
@@ -42,7 +42,7 @@ class ChaoxingVideoState:
 
 @dataclass(frozen=True, slots=True)
 class ChaoxingPageState:
-    """Validated snapshot of the active Chaoxing card and its video frames."""
+    """当前学习通卡片及其视频 frame 的已校验快照。"""
 
     content_frame_url: str
     knowledge_id: str | None
@@ -55,7 +55,7 @@ class ChaoxingPageState:
 
 @dataclass(frozen=True, slots=True)
 class ChaoxingDocumentModuleState:
-    """Outer-card metadata for one PDF module."""
+    """单个 PDF 模块的外层卡片元数据。"""
 
     module_index: int
     module_url: str
@@ -71,7 +71,7 @@ class ChaoxingDocumentModuleState:
         *,
         module_index: int,
     ) -> ChaoxingDocumentModuleState:
-        """Validate and convert one content-frame PDF module."""
+        """校验并转换一个内容 frame 的 PDF 模块。"""
         if not isinstance(raw, dict):
             raise ValueError("document module state must be an object")
 
@@ -114,7 +114,7 @@ class ChaoxingDocumentModuleState:
 
 @dataclass(frozen=True, slots=True)
 class ChaoxingDocumentViewerState:
-    """Continuous-scroll state for one final Chaoxing PDF viewer frame."""
+    """学习通最终 PDF 阅读器 frame 的连续滚动状态。"""
 
     object_id: str
     page_count: int
@@ -130,7 +130,7 @@ class ChaoxingDocumentViewerState:
         cls,
         raw: object,
     ) -> ChaoxingDocumentViewerState:
-        """Validate viewer metrics and derive bottom state with tolerance."""
+        """校验阅读器指标，并带容差推导出是否到达底部。"""
         if not isinstance(raw, dict):
             raise ValueError("document viewer state must be an object")
 

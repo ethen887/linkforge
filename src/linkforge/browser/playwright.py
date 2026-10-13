@@ -217,7 +217,7 @@ class PlaywrightBrowser(Browser):
         self._open(url, wait_for_dom=False)
 
     def open_for_readiness(self, url: str) -> None:
-        """Wait for DOM parsing, then let the caller check business readiness."""
+        """等待 DOM 解析完成，再由调用方检查业务就绪状态。"""
         self._open(url, wait_for_dom=True)
 
     def _open(self, url: str, *, wait_for_dom: bool) -> None:
@@ -309,7 +309,7 @@ class PlaywrightBrowser(Browser):
             raise BrowserError("Failed to read page text.") from exc
 
     def interactive_elements(self) -> tuple[InteractiveElement, ...]:
-        """Discover visible, enabled interactive elements and refresh the target mapping."""
+        """发现可见且可用的可交互元素，并刷新目标映射。"""
         page = self._require_page()
         self._targets.clear()
 
@@ -353,7 +353,7 @@ class PlaywrightBrowser(Browser):
             raise BrowserError("Failed to read interactive elements.") from exc
 
     def evaluate_in_frames(self, expression: str) -> tuple[object, ...]:
-        """Evaluate a page expression, ignoring frames invalidated during traversal."""
+        """求值页面表达式，忽略遍历期间已失效的 frame。"""
         page = self._require_page()
         results: list[object] = []
 
@@ -383,7 +383,7 @@ class PlaywrightBrowser(Browser):
         return element_scope(self._require_page(), frame_url_contains, selector, ancestor_url=ancestor_url)
 
     def current_page(self) -> BrowserPage:
-        """Return the provider-neutral identity of the selected page."""
+        """返回所选页面与提供商无关的身份标识。"""
         page = self._require_page()
         for page_id, managed in self._pages.items():
             if managed == page:
@@ -401,7 +401,7 @@ class PlaywrightBrowser(Browser):
         *,
         timeout_ms: int,
     ) -> BrowserPage:
-        """Capture the popup caused by one exact frame-scoped click."""
+        """捕获由一次精确的、限定 frame 的点击所产生的弹窗。"""
         if not frame_url_contains.strip() or not selector.strip():
             raise ValueError("frame_url_contains and selector must not be empty")
         if timeout_ms <= 0:
@@ -444,7 +444,7 @@ class PlaywrightBrowser(Browser):
         return BrowserPage(page_id=page_id, url=popup.url)
 
     def switch_page(self, page: BrowserPage) -> None:
-        """Select a page previously returned by this Browser instance."""
+        """选择由本 Browser 实例先前返回的一个页面。"""
         managed = self._pages.get(page.page_id)
         if managed is None or managed.is_closed():
             raise BrowserClosedError(f"Managed browser page is unavailable: {page.page_id}")
@@ -456,7 +456,7 @@ class PlaywrightBrowser(Browser):
         self._targets.clear()
 
     def close_page(self, page: BrowserPage) -> None:
-        """Close exactly one managed page and invalidate its logical targets."""
+        """关闭恰好一个受管理的页面，并使它的逻辑目标失效。"""
         managed = self._pages.get(page.page_id)
         if managed is None:
             raise BrowserClosedError(f"Managed browser page is unavailable: {page.page_id}")
@@ -472,7 +472,7 @@ class PlaywrightBrowser(Browser):
             self._targets.clear()
 
     def click_target(self, target_id: int) -> None:
-        """Click a logical target from the current interactive-element mapping."""
+        """点击当前可交互元素映射中的一个逻辑目标。"""
         target = self._require_target(target_id)
 
         try:
@@ -483,7 +483,7 @@ class PlaywrightBrowser(Browser):
             raise BrowserElementError(f"Failed to click target: {target_id}") from exc
 
     def fill_target(self, target_id: int, text: str) -> None:
-        """Fill a logical target from the current interactive-element mapping."""
+        """向当前可交互元素映射中的一个逻辑目标填写内容。"""
         target = self._require_target(target_id)
 
         try:
@@ -494,7 +494,7 @@ class PlaywrightBrowser(Browser):
             raise BrowserElementError(f"Failed to fill target: {target_id}") from exc
 
     def press_target(self, target_id: int, key: str) -> None:
-        """Send a key press to a logical target from the current mapping."""
+        """向当前映射中的一个逻辑目标发送按键。"""
         if not key.strip():
             raise ValueError("key must not be empty")
 
@@ -712,7 +712,7 @@ class PlaywrightBrowser(Browser):
         return self._page
 
     def _require_target(self, target_id: int) -> ElementHandle:
-        """Return a mapped target or reject an unknown or stale logical ID."""
+        """返回映射到的目标，或拒绝未知或已过期的逻辑 ID。"""
         target = self._targets.get(target_id)
         if target is None:
             raise BrowserElementError(f"Unknown or stale target_id: {target_id}")
@@ -722,7 +722,7 @@ class PlaywrightBrowser(Browser):
     def _describe_interactive_element(
         element: ElementHandle,
     ) -> tuple[InteractiveElementRole, str] | None:
-        """Extract a small browser-neutral role and accessible label from an element."""
+        """从元素中提取与提供商无关的角色和可访问名称。"""
         description = element.evaluate(
             r"""
             element => {

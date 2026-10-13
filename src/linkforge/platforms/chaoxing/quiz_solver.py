@@ -1,4 +1,4 @@
-"""One screenshot and one provider-neutral vision request per question."""
+"""每道题一张截图、一次与提供商无关的视觉请求。"""
 
 import json
 import logging
@@ -70,7 +70,7 @@ _RETRY_PROMPT = (
 
 
 class QuizResponseError(ChaoxingQuizAnswerError):
-    """Safe, categorized response failure; never retains model output."""
+    """安全、分类化的响应失败；从不保留模型输出。"""
 
     def __init__(self, question: QuizQuestion, reason: str, detail: str = "") -> None:
         self.reason = reason
@@ -127,7 +127,7 @@ def parse_answer(content: str | None, question: QuizQuestion) -> QuizAnswer:
     try:
         return validate_answer(question, QuizAnswer(kind, tuple(raw["choices"])))
     except ChaoxingQuizAnswerError as exc:
-        # Contract validators emit fixed messages, never raw choices or model text.
+        # 契约校验器只发出固定消息，从不携带原始选项或模型文本。
         raise QuizResponseError(question, "invalid_answer", str(exc)) from None
 
 
@@ -161,7 +161,7 @@ class LLMQuizSolver:
                     time.monotonic() - started,
                     type(exc).__name__,
                 )
-                # SDK exception bodies can contain request data or credentials.
+                # SDK 异常正文可能包含请求数据或凭据。
                 request_reason = model_failure_reason(exc)
                 raise ChaoxingQuizSolverError(
                     f"第 {question.index + 1} 题模型调用失败：{request_reason}"

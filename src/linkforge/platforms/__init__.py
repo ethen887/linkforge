@@ -1,1 +1,1 @@
-"""Platform-specific LinkForge adapters."""
+"""LinkForge 的平台特定适配器。"""

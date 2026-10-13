@@ -1,4 +1,4 @@
-"""Deterministic lifecycle for task-point and ordinary Chaoxing videos."""
+"""任务点视频与普通学习通视频的确定性生命周期。"""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class ChaoxingVideoHandlerConfig:
-    """Bounded waits used by the deterministic video lifecycle."""
+    """确定性视频生命周期所使用的有界等待参数。"""
 
     poll_interval_seconds: float = 1.0
     overall_timeout_seconds: float = 8 * 60 * 60
@@ -65,7 +65,7 @@ class ChaoxingVideoHandlerConfig:
 
 
 class ChaoxingVideoTaskHandler(TaskHandler):
-    """Play a video and verify platform or ordinary-media completion."""
+    """播放视频，并验证平台或普通媒体的完成状态。"""
 
     def __init__(
         self,
@@ -83,7 +83,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         self._monotonic = monotonic
 
     def run(self) -> None:
-        """Run the current video until its applicable completion is observed."""
+        """运行当前视频，直到观察到其适用的完成状态为止。"""
         logger.info("Video handler started")
         try:
             self._run()
@@ -93,6 +93,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         logger.info("Video handler completed")
 
     def _run(self) -> None:
+        """驱动视频处理主循环，直到观察到平台或普通媒体的完成状态。"""
         initial_state = self._inspect()
         target = self._locate_target(initial_state)
         if target is None:
@@ -219,7 +220,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
                         "The Chaoxing video remained paused after playback was requested."
                     )
                 elif not video.paused:
-                    # Re-arm only after observing real playback, so a later pause can be resumed once.
+                    # 仅在观察到真实播放后重新武装，这样后续的暂停才能再次被恢复。
                     play_attempted = False
                     play_requested_at = None
 
@@ -237,9 +238,9 @@ class ChaoxingVideoTaskHandler(TaskHandler):
                         "The Chaoxing video made no playback progress before the progress deadline."
                     )
                 else:
-                    # A player can report paused=False while its media clock is stuck.
-                    # Retry the normal playback controls without seeking, reloading,
-                    # extending the progress deadline, or changing task completion.
+                    # 播放器可能在媒体时钟停滞时报告 paused=False。
+                    # 在不出于 seek、不重新加载、不延长进度截止时间、也不改变任务完成
+                    # 状态的前提下，重试正常的播放控制。
                     if (
                         not video.paused
                         and recovery_attempts < self._config.stall_recovery_attempts
@@ -250,8 +251,8 @@ class ChaoxingVideoTaskHandler(TaskHandler):
                         self._log_stalled_video(video, target, recovery_attempts, now - last_progress_at)
                         self._request_play(target, restart=True)
                         logger.info("Video stall recovery requested")
-                    # The platform can restore an earlier media position. Use it as
-                    # the next baseline; a backward jump itself is not progress.
+                    # 平台可能恢复到更早的媒体位置。将其作为下一个基线；
+                    # 向后跳转本身并不算进度。
                     if video.current_time < last_current_time - _PROGRESS_EPSILON_SECONDS:
                         last_current_time = video.current_time
 
@@ -264,6 +265,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
             raise VideoTaskError("Unable to inspect the current Chaoxing video task.") from exc
 
     def _locate_target(self, state: ChaoxingPageState) -> ChaoxingModuleState | None:
+        """在当前卡片中定位待处理的视频目标模块；没有则返回 None 或抛错。"""
         pending = next(
             (
                 module
@@ -285,7 +287,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
             _VIDEO_MODULE_PATH in module.url and self._video_session.is_handled(state, index)
             for index, module in enumerate(state.modules)
         ):
-            # Detector and handler are separate observations; completion between them is benign.
+            # 检测器与处理器是两次独立的观察；两者之间的完成是良性的。
             return None
 
         if pending is None:
@@ -337,6 +339,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         )
 
     def _request_play(self, target: ChaoxingModuleState, *, restart: bool = False) -> None:
+        """在目标视频 frame 中请求播放；restart=True 时先暂停再重播。"""
         expression = _play_video_script(target.url, target.frame_path, restart=restart)
         try:
             results = self._browser.evaluate_in_frames(expression)

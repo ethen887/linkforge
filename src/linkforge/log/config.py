@@ -1,4 +1,4 @@
-"""Configure the shared LinkForge file logger."""
+"""配置 LinkForge 共享的文件日志记录器。"""
 
 from __future__ import annotations
 
@@ -14,11 +14,11 @@ _LOG_FILE_SUFFIX = ".log"
 
 
 def setup_logging(*, log_dir: Path | None = None) -> Path:
-    """Configure DEBUG file logging and return the active log file path.
+    """配置 DEBUG 文件日志，并返回当前生效的日志文件路径。
 
-    Repeated calls for the same directory reuse the existing LinkForge-owned
-    handler. Passing ``log_dir`` is primarily useful for isolated callers such
-    as tests; normal application runs use the repository's ``logs`` directory.
+    对同一目录的重复调用会复用已存在的 LinkForge 专属处理器。传入
+    ``log_dir`` 主要供测试等隔离调用方使用；正常应用运行使用仓库的
+    ``logs`` 目录。
     """
     destination = (log_dir or _default_log_dir()).resolve()
     destination.mkdir(parents=True, exist_ok=True)

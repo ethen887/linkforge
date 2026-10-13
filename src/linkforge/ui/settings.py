@@ -1,4 +1,4 @@
-"""GUI preferences and provider credentials, separate from runtime configuration."""
+"""GUI 偏好设置与服务商凭据，与运行时配置相分离。"""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ _NATIVE_BACKEND_MODULES = {
 
 
 def default_profile_dir() -> str:
-    """Keep browser identity outside the replaceable portable application folder."""
+    """将浏览器身份保存在可更换的便携应用目录之外。"""
     root = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.GenericDataLocation)
     if not root:
         raise RuntimeError("Local application data directory is unavailable.")
@@ -36,7 +36,7 @@ def default_profile_dir() -> str:
 
 @dataclass(slots=True, repr=False)
 class UserSettings:
-    """Only non-secret GUI fields; empty values preserve first-run defaults."""
+    """仅保存非机密 GUI 字段；空值保留首次运行的默认值。"""
 
     course_url: str = ""
     provider: str = ""
@@ -45,7 +45,7 @@ class UserSettings:
 
 
 class CredentialStore(Protocol):
-    """Replaceable credential interface for deterministic tests."""
+    """可替换的凭据接口，便于进行确定性测试。"""
 
     def get_password(self, service: str, username: str) -> str | None: ...
 
@@ -53,13 +53,13 @@ class CredentialStore(Protocol):
 
 
 class SystemCredentialStore:
-    """Use native keyring backends only, rejecting file and null backends."""
+    """仅使用原生 keyring 后端，拒绝文件型与空后端。"""
 
     @staticmethod
     def _backend() -> KeyringBackend:
         backend = keyring.get_keyring()
-        # A Chainer may contain third-party plaintext backends. Select a native
-        # backend explicitly rather than allowing the chain to fall through.
+        # Chainer 可能包含第三方明文后端。显式选择原生后端，
+        # 而不是让链一路回退到它们。
         candidates = backend.backends if isinstance(backend, ChainerBackend) else [backend]
         for candidate in candidates:
             if type(candidate).__module__ in _NATIVE_BACKEND_MODULES and candidate.priority > 0:
@@ -74,7 +74,7 @@ class SystemCredentialStore:
 
 
 class UserSettingsStore:
-    """Best-effort persistence; never expose backend exception details or secrets."""
+    """尽力而为的持久化；绝不暴露后端异常详情或机密。"""
 
     def __init__(
         self,
@@ -92,7 +92,7 @@ class UserSettingsStore:
             logger.warning("GUI settings storage is unavailable.")
 
     def load(self) -> UserSettings:
-        """Restore preferences, or use defaults when storage is corrupt/unavailable."""
+        """恢复偏好设置；存储损坏或不可用时应使用默认值。"""
         try:
             if self._settings is None:
                 return UserSettings()
@@ -111,7 +111,7 @@ class UserSettingsStore:
             return UserSettings()
 
     def save(self, settings: UserSettings) -> bool:
-        """Write the four non-secret fields only after GUI validation succeeds."""
+        """仅在 GUI 校验通过后写入四个非机密字段。"""
         try:
             if self._settings is None:
                 return False
@@ -126,7 +126,7 @@ class UserSettingsStore:
             return False
 
     def save_course_url(self, course_url: str) -> bool:
-        """Persist a course checkpoint without rewriting other fields or credentials."""
+        """持久化课程进度断点，不重写其他字段或凭据。"""
         try:
             if self._settings is None:
                 return False
@@ -138,7 +138,7 @@ class UserSettingsStore:
             return False
 
     def load_api_key(self, provider: str) -> str | None:
-        """Read only this provider's credential; missing/deleted keys stay empty."""
+        """只读取该服务商的凭据；缺失或已删除的密钥保持为空。"""
         if provider not in MODEL_PROVIDERS:
             return None
         try:
@@ -148,7 +148,7 @@ class UserSettingsStore:
             return None
 
     def save_api_key(self, provider: str, api_key: str) -> bool:
-        """No plaintext fallback when native credential storage cannot save."""
+        """原生凭据存储无法保存时不提供明文回退。"""
         if provider not in MODEL_PROVIDERS or not api_key:
             return False
         try:

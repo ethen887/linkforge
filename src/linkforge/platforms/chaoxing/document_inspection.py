@@ -1,4 +1,4 @@
-"""Parsing helpers for Chaoxing document frame inspection."""
+"""学习通文档框架检查的解析辅助函数。"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class ChaoxingDocumentInspection:
-    """Validated content modules and viewers from one all-frame snapshot."""
+    """从一次全框架快照中校验得到的内容模块与查看器。"""
 
     modules: tuple[dict[str, object], ...]
     viewers: dict[str, ChaoxingDocumentViewerState]
@@ -31,7 +31,7 @@ class ChaoxingDocumentInspection:
 def parse_document_inspection(
     frame_results: tuple[object, ...],
 ) -> ChaoxingDocumentInspection | None:
-    """Parse one current-card snapshot, returning None while frames are replacing."""
+    """解析当前卡片的快照；框架替换期间返回 None。"""
     active_tab_count = 0
     content_frames: list[dict[str, Any]] = []
     viewers: dict[str, ChaoxingDocumentViewerState] = {}
@@ -93,7 +93,7 @@ def parse_document_inspection(
 def inspect_innerbook_viewers(
     browser: Browser, inspection: ChaoxingDocumentInspection
 ) -> ChaoxingDocumentInspection:
-    """Add book-reader state only when the current card contains innerbooks."""
+    """仅当当前卡片包含内置图书时才添加图书阅读器状态。"""
     if not any(is_innerbook(parse_module_basics(module)[0]) for module in inspection.modules):
         return inspection
     viewers = []
@@ -107,7 +107,7 @@ def inspect_innerbook_viewers(
 
 
 def parse_module_basics(raw_module: dict[str, object]) -> tuple[str, bool, bool]:
-    """Validate fields shared by document and non-document modules."""
+    """校验文档模块与非文档模块共用的字段。"""
     module_url = raw_module.get("module_url")
     has_job_icon = raw_module.get("has_job_icon")
     finished = raw_module.get("finished")
@@ -124,7 +124,7 @@ def document_viewer_is_ready(
     module: ChaoxingDocumentModuleState,
     viewer: ChaoxingDocumentViewerState | None,
 ) -> bool:
-    """Return whether the final viewer has mounted its declared pages."""
+    """返回最终查看器是否已挂载其声明的页面。"""
     if viewer is None or viewer.page_count <= 0:
         return False
     return module.declared_page_count is None or viewer.page_count >= module.declared_page_count

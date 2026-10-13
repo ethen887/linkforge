@@ -1,1 +1,1 @@
-"""LinkForge observation infrastructure."""
+"""LinkForge 观察基础设施。"""

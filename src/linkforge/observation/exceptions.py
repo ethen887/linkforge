@@ -1,9 +1,9 @@
-"""Observation-layer exceptions."""
+"""观察层异常。"""
 
 
 class ObservationError(RuntimeError):
-    """Base exception for observation failures."""
+    """观察失败的基础异常。"""
 
 
 class ObservationCaptureError(ObservationError):
-    """Raised when an observation source cannot be captured."""
+    """当观察源无法被捕获时抛出。"""

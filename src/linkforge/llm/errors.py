@@ -1,10 +1,10 @@
-"""Provider-neutral, user-safe model request failures."""
+"""与具体服务商无关、面向用户安全的模型请求失败。"""
 
 from __future__ import annotations
 
 
 class ModelRequestError(RuntimeError):
-    """A model provider request failed with a safe Chinese explanation."""
+    """模型服务商请求失败，携带安全的中文错误说明。"""
 
     def __init__(self, reason: str) -> None:
         self.reason = reason
@@ -24,7 +24,7 @@ def _status_code(exc: Exception) -> int | None:
 
 
 def model_failure_reason(exc: Exception) -> str:
-    """Classify SDK failures without exposing response bodies or credentials."""
+    """对 SDK 失败进行分类，不暴露响应内容或凭据。"""
     if isinstance(exc, ModelRequestError):
         return exc.reason
 

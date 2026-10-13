@@ -1,4 +1,4 @@
-"""Deterministic task detection for Chaoxing course cards."""
+"""学习通课程卡片的确定性任务检测。"""
 
 import logging
 from urllib.parse import urljoin, urlsplit
@@ -36,14 +36,14 @@ _MODULE_TASK_TYPES = {
     "/ananas/modules/insertbbs/": TaskType.COMMENT,
 }
 
-# Diagnostic vocabulary only; inclusion does not make a module supported.
+# 仅用于诊断的词语表；命中某个词语并不代表该模块受支持。
 _DIAGNOSTIC_MODULE_KINDS = frozenset(
     {"video", "pdf", "work", "insertbbs", "audio", "ppt", "read", "flash", "img", "book", "innerbook"}
 )
 
 
 def _diagnostic_module_kind(module_url: str) -> str:
-    """Return an allowlisted route label without logging arbitrary URL data."""
+    """返回在白名单内的路由标签，且不记录任意的 URL 数据。"""
     path = urlsplit(module_url).path
     _, separator, suffix = path.partition("/ananas/modules/")
     if not separator:
@@ -53,7 +53,7 @@ def _diagnostic_module_kind(module_url: str) -> str:
 
 
 class ChaoxingTaskDetector(TaskDetector):
-    """Detect the first pending module in the current Chaoxing content frame."""
+    """检测当前学习通内容 frame 中首个待处理模块。"""
 
     def __init__(
         self,
@@ -63,13 +63,14 @@ class ChaoxingTaskDetector(TaskDetector):
         video_session: VideoSession | None = None,
         innerbook_session: InnerbookSession | None = None,
     ) -> None:
+        """保存浏览器引用与各会话对象，用于判断模块是否已被处理。"""
         self._browser = browser
         self._comment_session = comment_session
         self._video_session = video_session
         self._innerbook_session = innerbook_session or InnerbookSession()
 
     def detect(self) -> TaskType:
-        """Return a deterministic task type from the current Chaoxing card."""
+        """根据当前学习通卡片返回确定性的任务类型。"""
         stage = "frame_evaluation"
         module_index: int | None = None
         try:
@@ -91,8 +92,8 @@ class ChaoxingTaskDetector(TaskDetector):
                 stage = "module_parsing"
                 module_url, has_job_icon, finished = parse_module_basics(raw_module)
 
-                # PDF / Document uses LinkForge's real viewer state in
-                # addition to Chaoxing's task-point marker.
+                # PDF/文档在此使用 LinkForge 的真实阅读器状态，
+                # 而不只依赖学习通的任务点标记。
                 if _PDF_MODULE_PATH in module_url:
                     stage = "document_parsing"
                     document = ChaoxingDocumentModuleState.from_raw(
@@ -100,15 +101,15 @@ class ChaoxingTaskDetector(TaskDetector):
                         module_index=module_index,
                     )
 
-                    # A Chaoxing task-point PDF explicitly marked finished
-                    # does not need to be processed again.
+                    # 带有学习通任务点且被明确标记为已完成的 PDF
+                    # 无需再次处理。
                     if document.has_job_icon and document.finished:
                         continue
 
                     viewer = inspection.viewers.get(document.object_id)
 
-                    # A real viewer that has loaded completely and already
-                    # reached the bottom is considered handled by LinkForge.
+                    # 已完整加载且已到达底部的真实阅读器，
+                    # 视为已被 LinkForge 处理。
                     if (
                         viewer is not None
                         and document_viewer_is_ready(document, viewer)
@@ -116,12 +117,11 @@ class ChaoxingTaskDetector(TaskDetector):
                     ):
                         continue
 
-                    # Missing/not-ready viewers deliberately remain DOCUMENT.
-                    # The handler owns the bounded viewer-readiness wait.
+                    # 缺失或未就绪的阅读器有意保持为 DOCUMENT，
+                    # 由处理器负责限时的阅读器就绪等待。
                     return TaskType.DOCUMENT
 
-                # Non-document task points continue to use Chaoxing's
-                # finished marker.
+                # 非文档类任务点继续使用学习通的完成标记。
                 if has_job_icon and finished:
                     continue
 
@@ -135,7 +135,7 @@ class ChaoxingTaskDetector(TaskDetector):
                         inspection.content_frame_url, module_index, module_url, book_viewer
                     ):
                         continue
-                    # A known book is a document; its handler owns readiness and completion checks.
+                    # 已知的书籍视为文档；其就绪与完成检查由处理器负责。
                     return TaskType.DOCUMENT
 
                 if "/ananas/modules/video/" in module_url and self._video_session is not None:
@@ -143,7 +143,7 @@ class ChaoxingTaskDetector(TaskDetector):
                     state = inspect_chaoxing_page(self._browser)
                     if module_index >= len(state.modules):
                         return self._unknown("module_missing_between_observations", stage, module_index)
-                    # The card may change between the two frame observations.
+                    # 两次 frame 观察之间卡片可能发生变化。
                     if state.modules[module_index].url != urljoin(state.content_frame_url, module_url):
                         return self._unknown("module_changed_between_observations", stage, module_index)
                     if self._video_session.is_handled(state, module_index):
@@ -182,12 +182,12 @@ class ChaoxingTaskDetector(TaskDetector):
         except ValueError:
             return self._unknown("malformed_state", stage, module_index)
 
-        # No remaining pending module in the current Card.
+        # 当前卡片中没有剩余的待处理模块。
         return TaskType.CONTENT
 
     @staticmethod
     def _unknown(reason: str, stage: str, module_index: int | None = None) -> TaskType:
-        """Log only controlled labels and counts, never raw DOM or exception text."""
+        """仅记录受控标签与计数，绝不会记录原始 DOM 或异常文本。"""
         logger.debug(
             "Chaoxing UNKNOWN: reason=%s stage=%s module_index=%s",
             reason,
@@ -198,7 +198,7 @@ class ChaoxingTaskDetector(TaskDetector):
 
     @staticmethod
     def _classify_module(module_url: str) -> TaskType:
-        """Map one Chaoxing module URL to its provider-neutral task type."""
+        """将学习通模块 URL 映射到与提供方无关的任务类型。"""
         for module_path, task_type in _MODULE_TASK_TYPES.items():
             if module_path in module_url:
                 return task_type

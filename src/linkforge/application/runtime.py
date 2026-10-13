@@ -1,4 +1,4 @@
-"""Platform-neutral application lifecycle orchestration."""
+"""平台无关的应用生命周期编排。"""
 
 import logging
 from collections.abc import Callable
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class ApplicationConfig:
-    """Platform-neutral configuration for one LinkForge application run."""
+    """单次 LinkForge 应用运行的平台无关配置。"""
 
     course_url: str
     browser_config: BrowserConfig
@@ -33,19 +33,19 @@ class ApplicationConfig:
 
 
 class PlatformRuntime(Protocol):
-    """Prepare course readiness and build tasks from application-owned resources."""
+    """根据应用持有的资源准备课程就绪状态并构建任务。"""
 
     def prepare(self, *, browser: Browser, course_url: str, should_stop: Callable[[], bool]) -> bool:
-        """Wait for platform startup readiness; return False when stopped."""
+        """等待平台启动就绪；停止时返回 False。"""
         ...
 
     def build_runner(self, *, browser: Browser, llm: LLM, model: str) -> TaskRunner:
-        """Create the complete task runner for one platform run."""
+        """为单次平台运行创建完整的任务执行器。"""
         ...
 
 
 class LinkForgeApplication:
-    """Own resources and execute one synchronous LinkForge application run."""
+    """持有资源并执行一次同步的 LinkForge 应用运行。"""
 
     def __init__(
         self,
@@ -62,7 +62,7 @@ class LinkForgeApplication:
         self._stop_requested = False
 
     def run(self) -> None:
-        """Run until platform completion, a task-boundary stop, or an error."""
+        """运行直至平台完成、在任务边界停止或发生错误。"""
         logger.info("Application run started")
         try:
             browser = self._browser_factory(self._config.browser_config)
@@ -93,7 +93,7 @@ class LinkForgeApplication:
             logger.info("Application cleanup finished")
 
     def stop(self) -> None:
-        """Request a stop during preparation or at the next task boundary."""
+        """请求在准备期间或下一个任务边界处停止。"""
         self._stop_requested = True
         logger.info("Application stop requested")
 

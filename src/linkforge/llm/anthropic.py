@@ -19,7 +19,7 @@ class AnthropicInterface(LLM):
         )
 
     def _convert_tool_calls(self, tool_calls: tuple[ToolCall, ...]) -> list[dict[str, Any]]:
-        """Convert LinkForge tool calls to Anthropic tool-use blocks."""
+        """将 LinkForge 的工具调用转换为 Anthropic 的 tool-use 数据块。"""
         anthropic_tool_calls = []
 
         for tool_call in tool_calls:
@@ -35,7 +35,7 @@ class AnthropicInterface(LLM):
         return anthropic_tool_calls
 
     def _convert_tools(self, tools: list[Any]) -> list[ToolParam]:
-        """Convert LinkForge/OpenAI-style tool definitions to Anthropic format."""
+        """将 LinkForge/OpenAI 风格的工具定义转换为 Anthropic 格式。"""
         anthropic_tools: list[ToolParam] = []
 
         for tool in tools:
@@ -70,7 +70,7 @@ class AnthropicInterface(LLM):
         return anthropic_tools
 
     def _convert_message(self, message: LLMMessage) -> dict[str, Any] | None:
-        """Convert a LinkForge message to Anthropic message format."""
+        """将 LinkForge 消息转换为 Anthropic 消息格式。"""
         role = message.role
 
         if role == "system":
@@ -145,7 +145,7 @@ class AnthropicInterface(LLM):
         messages: list[LLMMessage],
         tools: list[dict[str, Any]],
     ) -> LLMResponse:
-        """Call an Anthropic model and normalize its response."""
+        """调用 Anthropic 模型并将其响应归一化为通用格式。"""
         anthropic_messages: list[MessageParam] = []
         system_prompt: str | None = None
 

@@ -1,4 +1,4 @@
-"""Development entry point for the current LinkForge application runtime."""
+"""当前 LinkForge 应用运行时的开发入口点。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_required_env(name: str) -> str:
-    """Return one non-empty required environment variable."""
+    """返回一个非空且必填的环境变量值。"""
     value = os.environ.get(name)
     if value is None or not value.strip():
         raise RuntimeError(f"Missing required environment variable: {name}")
@@ -28,7 +28,7 @@ def _get_required_env(name: str) -> str:
 
 
 def main() -> None:
-    """Compose and run LinkForge against one Chaoxing course."""
+    """针对单个学习通课程组装并运行 LinkForge。"""
     log_file = setup_logging()
     logger.info("Logging initialized: %s", log_file)
     try:

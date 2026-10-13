@@ -1,4 +1,4 @@
-"""Bounded, cancellable startup readiness before Chaoxing task detection."""
+"""学习通任务检测前有限、可取消的启动就绪等待。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from linkforge.browser.exceptions import BrowserClosedError, BrowserError
 
 logger = logging.getLogger(__name__)
 
-# Return only readiness flags, never credentials, page text, or full URLs.
+# 仅返回就绪标志，绝不返回凭据、页面文本或完整 URL。
 CHAOXING_STARTUP_SCRIPT = r"""() => {
     const host = location.hostname.toLowerCase();
     const path = location.pathname.toLowerCase();
@@ -34,11 +34,11 @@ CHAOXING_STARTUP_SCRIPT = r"""() => {
 
 
 class ChaoxingStartupTimeoutError(RuntimeError):
-    """Manual login or course readiness did not finish before its deadline."""
+    """手动登录或课程就绪未能在其截止时间前完成。"""
 
 
 class ChaoxingStartupWait:
-    """Wait for a loaded course card, allowing the user to log in manually."""
+    """等待课程卡片加载完成，期间允许用户手动登录。"""
 
     def __init__(
         self,
@@ -49,6 +49,7 @@ class ChaoxingStartupWait:
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
+        """配置登录/页面超时与轮询间隔，并校验各时间值为有限正数。"""
         for value in (login_timeout_seconds, page_timeout_seconds, poll_interval_seconds):
             if not isfinite(value) or value <= 0:
                 raise ValueError("Startup timing values must be finite and positive")
@@ -59,11 +60,11 @@ class ChaoxingStartupWait:
         self._monotonic = monotonic
 
     def wait(self, *, browser: Browser, course_url: str, should_stop: Callable[[], bool]) -> bool:
-        """Return on course readiness or stop, raising on timeout or browser closure.
+        """在课程就绪或收到停止请求时返回，超时或浏览器关闭时抛出异常。
 
-        A ready course passes on the first probe without sleeping. Login grants
-        a bounded manual-login window; leaving the login page alone is never
-        treated as proof that TaskRunner can start.
+        已就绪的课程在第一次探测时即通过、不进行休眠。登录会提供一段
+        有限的启动等待窗口；仅停留在登录页绝不会被视为 TaskRunner
+        可以开始运行的依据。
         """
         deadline = self._monotonic() + self._page_timeout
         login_seen = False
@@ -97,8 +98,8 @@ class ChaoxingStartupWait:
                     )
                 raise ChaoxingStartupTimeoutError("课程页面未能就绪，请检查课程地址和页面加载情况。")
 
-            # Some login flows land in the personal space instead of the course.
-            # Navigate once, only after observing login followed by that landing.
+            # 部分登录流程会落到个人空间而不是课程页面。
+            # 仅在观察到登录又跳转到个人空间后才导航一次。
             if login_seen and personal_home and not login_page and not course_reopened:
                 if should_stop():
                     return False
@@ -115,7 +116,7 @@ class ChaoxingStartupWait:
         except BrowserClosedError:
             raise
         except BrowserError as exc:
-            # Navigation may replace frames or their execution contexts.
+            # 导航可能替换 frame 或其执行上下文。
             logger.debug("Chaoxing startup probe temporarily unavailable (%s)", type(exc).__name__)
             return False, False, False
 

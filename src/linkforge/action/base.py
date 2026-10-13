@@ -1,4 +1,4 @@
-"""Base interface for action executors."""
+"""动作执行器的基础接口。"""
 
 from abc import ABC, abstractmethod
 
@@ -6,9 +6,9 @@ from linkforge.action.models import Action
 
 
 class ActionExecutor(ABC):
-    """Execute actions against an implementation-specific target."""
+    """针对特定实现的目标执行动作。"""
 
     @abstractmethod
     def execute(self, action: Action) -> None:
-        """Execute an action."""
+        """执行一个动作。"""
         raise NotImplementedError

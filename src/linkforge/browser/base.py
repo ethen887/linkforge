@@ -41,16 +41,16 @@ class Browser(ABC):
     def element_scope(
         self, frame_url_contains: str, selector: str, *, ancestor_url: str
     ) -> AbstractContextManager[tuple[BrowserElement, ...]]:
-        """Capture nodes in exactly one descendant frame of an exact ancestor URL.
+        """在指定祖先 URL 的某一个后代 frame 中捕获节点。
 
-        Require one ancestor and one matching descendant frame; an empty element
-        result is allowed. References are released on context exit. Optional
-        capability so existing text-only Browser implementations remain compatible.
+        要求恰好存在一个祖先 frame 和一个匹配的后代 frame；允许元素结果为空。
+        上下文退出时释放引用。作为可选能力，使现有仅文本的 Browser 实现
+        保持兼容。
         """
         raise BrowserError("This browser does not support scoped DOM elements.")
 
     def page_element_scope(self, selector: str) -> AbstractContextManager[tuple[BrowserElement, ...]]:
-        """Capture nodes in the selected page's main frame, releasing them on exit."""
+        """捕获所选页面主 frame 中的节点，退出时释放引用。"""
         raise BrowserError("This browser does not support main-frame DOM elements.")
 
     def __enter__(self) -> Self:
@@ -113,7 +113,7 @@ class Browser(ABC):
         raise NotImplementedError
 
     def open_for_readiness(self, url: str) -> None:
-        """Navigate before caller-owned readiness checks; fall back to ordinary open."""
+        """在调用方进行就绪检查前先执行导航；否则回退到普通 open。"""
         self.open(url)
 
     @abstractmethod
@@ -160,44 +160,42 @@ class Browser(ABC):
     @abstractmethod
     def interactive_elements(self) -> tuple[InteractiveElement, ...]:
         """
-        Discover interactive elements in the current page snapshot.
+        发现当前页面快照中的可交互元素。
 
-        Calling this method refreshes the logical target mapping and invalidates
-        IDs from an earlier discovery. Navigation or DOM replacement can also
-        make IDs from the current mapping stale.
+        调用本方法会刷新逻辑目标映射，并使先前发现产生的 ID 失效。
+        导航或 DOM 替换也可能使当前映射中的 ID 过期。
 
         Returns:
-            Browser-neutral elements with logical target IDs.
+            Browser 无关的元素及逻辑目标 ID。
 
         Raises:
-            BrowserError: Browser state cannot be inspected.
+            BrowserError: 无法检查浏览器状态。
         """
         raise NotImplementedError
 
     @abstractmethod
     def evaluate_in_frames(self, expression: str) -> tuple[object, ...]:
-        """Evaluate a trusted provider-neutral page expression in every frame.
+        """在每个 frame 中求值受信任的、与提供商无关的页面表达式。
 
-        Results are returned in frame order as plain Python values, without
-        exposing provider-specific frame objects. Frames detached during a
-        dynamic-page evaluation may be omitted. Platform adapters may use this
-        primitive for deterministic DOM inspection or normal page behavior such
-        as requesting HTML media playback; the expression must not forge site state.
+        结果按 frame 顺序以普通 Python 值返回，不暴露提供商相关的 frame 对象。
+        动态页面求值期间被分离的 frame 可能被省略。平台适配器可用此原语进行
+        确定性的 DOM 检查或触发正常页面行为（如请求 HTML 媒体播放）；
+        表达式不得伪造站点状态。
 
         Args:
-            expression: JavaScript expression to evaluate in each frame.
+            expression: 要在每个 frame 中求值的 JavaScript 表达式。
 
         Returns:
-            Provider-neutral evaluation results for successfully inspected frames.
+            成功检查到的 frame 的与提供商无关的求值结果。
 
         Raises:
-            BrowserError: The page or one of its frames cannot be inspected.
+            BrowserError: 无法检查该页面或其某个 frame。
         """
         raise NotImplementedError
 
     @abstractmethod
     def current_page(self) -> BrowserPage:
-        """Return an opaque reference to the current page."""
+        """返回当前页面的不透明引用。"""
         raise NotImplementedError
 
     @abstractmethod
@@ -208,57 +206,57 @@ class Browser(ABC):
         *,
         timeout_ms: int,
     ) -> BrowserPage:
-        """Click one element in one matching frame and capture its popup page."""
+        """点击一个匹配 frame 中的某个元素并捕获其弹窗页面。"""
         raise NotImplementedError
 
     @abstractmethod
     def switch_page(self, page: BrowserPage) -> None:
-        """Switch subsequent Browser operations to a managed page."""
+        """将后续 Browser 操作切换到某个受管理的页面。"""
         raise NotImplementedError
 
     @abstractmethod
     def close_page(self, page: BrowserPage) -> None:
-        """Close one managed page without selecting another page implicitly."""
+        """关闭一个受管理的页面，且不隐式选择其他页面。"""
         raise NotImplementedError
 
     @abstractmethod
     def click_target(self, target_id: int) -> None:
         """
-        Click an element discovered in the current page snapshot.
+        点击当前页面快照中发现的一个元素。
 
         Args:
-            target_id: Logical target ID returned by interactive_elements().
+            target_id: interactive_elements() 返回的逻辑目标 ID。
 
         Raises:
-            BrowserError: The target is unknown, stale, or cannot be clicked.
+            BrowserError: 目标未知、已过期或无法点击。
         """
         raise NotImplementedError
 
     @abstractmethod
     def fill_target(self, target_id: int, text: str) -> None:
         """
-        Fill an element discovered in the current page snapshot.
+        向当前页面快照中发现的一个元素填写内容。
 
         Args:
-            target_id: Logical target ID returned by interactive_elements().
-            text: Text to enter.
+            target_id: interactive_elements() 返回的逻辑目标 ID。
+            text: 要输入的文本。
 
         Raises:
-            BrowserError: The target is unknown, stale, or cannot be filled.
+            BrowserError: 目标未知、已过期或无法填写。
         """
         raise NotImplementedError
 
     @abstractmethod
     def press_target(self, target_id: int, key: str) -> None:
         """
-        Send a key press to an element in the current page snapshot.
+        向当前页面快照中的一个元素发送按键。
 
         Args:
-            target_id: Logical target ID returned by interactive_elements().
-            key: Key name, such as "Enter" or "Escape".
+            target_id: interactive_elements() 返回的逻辑目标 ID。
+            key: 按键名称，例如 "Enter" 或 "Escape"。
 
         Raises:
-            BrowserError: The target is unknown, stale, or cannot receive the key press.
+            BrowserError: 目标未知、已过期或无法接收按键。
         """
         raise NotImplementedError
 

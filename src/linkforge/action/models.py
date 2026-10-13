@@ -1,25 +1,25 @@
-"""Action data models."""
+"""动作数据模型。"""
 
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
 class OpenAction:
-    """Navigate the browser to a URL."""
+    """在浏览器中打开一个 URL。"""
 
     url: str
 
 
 @dataclass(frozen=True, slots=True)
 class ClickAction:
-    """Click an interactive element from the current observation."""
+    """点击来自当前观察结果的一个交互元素。"""
 
     target_id: int
 
 
 @dataclass(frozen=True, slots=True)
 class FillAction:
-    """Fill an interactive element from the current observation with text."""
+    """用文本填充来自当前观察结果的一个交互元素。"""
 
     target_id: int
     text: str
@@ -27,7 +27,7 @@ class FillAction:
 
 @dataclass(frozen=True, slots=True)
 class PressAction:
-    """Send a key press to an interactive element from the current observation."""
+    """向来自当前观察结果的一个交互元素发送按键。"""
 
     target_id: int
     key: str
@@ -35,7 +35,7 @@ class PressAction:
 
 @dataclass(frozen=True, slots=True)
 class ScrollAction:
-    """Scroll the browser vertically by a CSS pixel delta."""
+    """按 CSS 像素差值垂直滚动浏览器。"""
 
     delta_y: int
 

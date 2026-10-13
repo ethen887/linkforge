@@ -1,4 +1,4 @@
-"""Validated state and run-scoped completion for continuous-scroll innerbooks."""
+"""连续滚动内置图书的校验后状态与单次运行范围内的完成判断。"""
 
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -9,11 +9,12 @@ INNERBOOK_MODULE_PATH = "/ananas/modules/innerbook/"
 
 
 def is_innerbook(url: str) -> bool:
-    """Recognize the module route, excluding query-string lookalikes."""
+    """识别内置图书模块路由，排除形似路由的查询字符串。"""
     return urlsplit(url).path.startswith(INNERBOOK_MODULE_PATH)
 
 
 def frame_path(value: object) -> tuple[int, ...]:
+    """将原始 frame_path 值归一化为非负整数元组；格式非法时抛出 ValueError。"""
     if (
         not isinstance(value, list)
         or not value
@@ -25,7 +26,7 @@ def frame_path(value: object) -> tuple[int, ...]:
 
 @dataclass(frozen=True, slots=True)
 class InnerbookViewer:
-    """One loaded book reader, associated by its exact iframe ancestry."""
+    """一个已加载的图书阅读器，以其精确的 iframe 祖先路径加以关联。"""
 
     url: str
     path: tuple[int, ...]
@@ -37,6 +38,7 @@ class InnerbookViewer:
 
     @classmethod
     def from_raw(cls, raw: object) -> "InnerbookViewer":
+        """从页面脚本返回的原始字典构造 InnerbookViewer，并校验各字段一致性。"""
         if not isinstance(raw, dict):
             raise ValueError("innerbook reader must be an object")
         url = raw.get("url")
@@ -61,6 +63,7 @@ class InnerbookViewer:
 def find_innerbook_viewer(
     raw_module: dict[str, object], viewers: tuple[InnerbookViewer, ...]
 ) -> InnerbookViewer | None:
+    """确定与原始模块路径唯一匹配的阅读器；无匹配返回 None，多个匹配则抛出异常。"""
     module_path = frame_path(raw_module.get("frame_path"))
     matches = [viewer for viewer in viewers if viewer.path[:-1] == module_path]
     if len(matches) > 1:
@@ -69,7 +72,7 @@ def find_innerbook_viewer(
 
 
 class InnerbookSession:
-    """Remember only book readers whose real bottom was verified this run."""
+    """只记住本次运行中已验证真实底部的图书阅读器。"""
 
     def __init__(self) -> None:
         self._handled: set[tuple[str, int, str, tuple[int, ...], str]] = set()
@@ -82,6 +85,7 @@ class InnerbookSession:
         )
 
     def mark_handled(self, card_url: str, index: int, module_url: str, viewer: InnerbookViewer) -> None:
+        """将已确认真实底部且页面就绪的阅读器记录为本运行已处理。"""
         if not viewer.at_bottom or not viewer.visible_pages_ready:
             raise ValueError("innerbook completion requires loaded visible pages at the real bottom")
         self._handled.add((card_url, index, module_url, viewer.path, viewer.url))

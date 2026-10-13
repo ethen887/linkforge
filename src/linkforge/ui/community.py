@@ -1,4 +1,4 @@
-"""User feedback and open-source participation, without uploading runtime data."""
+"""用户反馈与开源参与入口，不上传运行时数据。"""
 
 from collections.abc import Callable
 
@@ -6,14 +6,14 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
-# Public feedback form; never append runtime configuration or credentials.
+# 公开反馈表单；绝不附加运行时配置或凭据。
 FEEDBACK_FORM_URL = "https://mhhvya3d.jsjform.com/f/NqrEmH"
 REPOSITORY_URL = "https://github.com/ethen887/linkforge"
 CONTRIBUTING_URL = f"{REPOSITORY_URL}/blob/main/CONTRIBUTING.md"
 
 
 class CommunityDialog(QDialog):
-    """A dismissible, non-modal reminder with explicit external-link actions."""
+    """一个可关闭、非模态的提醒对话框，提供明确的外链操作。"""
 
     def __init__(
         self,
@@ -67,14 +67,14 @@ class CommunityDialog(QDialog):
         layout.addLayout(actions)
 
     def open_feedback(self) -> None:
-        """Open only the configured form; do not fall back to a login-only service."""
+        """只打开配置好的表单；不回退到仅支持登录的服务。"""
         if not FEEDBACK_FORM_URL:
             self._show_notice("用户反馈", "反馈入口暂未开放，敬请期待。")
             return
         self._open_url(FEEDBACK_FORM_URL)
 
     def reject(self) -> None:
-        """Dismiss child notices too, including when the reminder is hidden."""
+        """同时关闭子提示框，包括提醒被隐藏的情况。"""
         if self._notice is not None:
             self._notice.close()
         super().reject()

@@ -1,4 +1,4 @@
-"""Base interface for observation sources."""
+"""观察源的基础接口。"""
 
 from abc import ABC, abstractmethod
 
@@ -6,9 +6,9 @@ from linkforge.observation.models import Observation
 
 
 class Observer(ABC):
-    """Produce normalized state snapshots from an observation source."""
+    """从观察源生成规范化的状态快照。"""
 
     @abstractmethod
     def observe(self) -> Observation:
-        """Capture and return the current state of the observation source."""
+        """捕获并返回观察源的当前状态。"""
         raise NotImplementedError

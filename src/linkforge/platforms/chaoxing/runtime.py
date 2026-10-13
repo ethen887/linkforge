@@ -1,4 +1,4 @@
-"""Composition root for one Chaoxing application run."""
+"""学习通单次运行的应用装配根（composition root）。"""
 
 import logging
 from collections.abc import Callable
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChaoxingPlatformRuntime(PlatformRuntime):
-    """Build the complete Chaoxing task runner from application-owned resources."""
+    """基于应用所拥有的资源构建完整的学习通任务运行器。"""
 
     def __init__(
         self,
@@ -35,17 +35,18 @@ class ChaoxingPlatformRuntime(PlatformRuntime):
         startup_wait: ChaoxingStartupWait | None = None,
         on_course_url_changed: Callable[[str], None] | None = None,
     ) -> None:
+        """接收测验提交器与可选的启动等待、课程 URL 变化回调，组合本次运行所需依赖。"""
         self._quiz_submitter = quiz_submitter
         self._startup_wait = startup_wait or ChaoxingStartupWait()
         self._on_course_url_changed = on_course_url_changed
         logger.debug("Chaoxing platform runtime created")
 
     def prepare(self, *, browser: Browser, course_url: str, should_stop: Callable[[], bool]) -> bool:
-        """Wait for manual login and the course page before constructing tasks."""
+        """等待手动登录及课程页面就绪后再构建任务。"""
         return self._startup_wait.wait(browser=browser, course_url=course_url, should_stop=should_stop)
 
     def build_runner(self, *, browser: Browser, llm: LLM, model: str) -> TaskRunner:
-        """Create run-scoped Chaoxing state, handlers, and task runner."""
+        """为本次运行创建学习通状态、处理器与任务运行器。"""
         logger.info("Building Chaoxing task workflow")
         comment_session = CommentSession()
         video_session = VideoSession()

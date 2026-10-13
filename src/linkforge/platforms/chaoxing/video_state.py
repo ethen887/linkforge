@@ -1,10 +1,10 @@
-"""Run-scoped completion of ordinary videos without platform task points."""
+"""无平台任务点的普通视频在单次运行内的完成度记忆。"""
 
 from linkforge.platforms.chaoxing.models import ChaoxingPageState
 
 
 class VideoSession:
-    """Remember genuinely ended ordinary videos within their original card."""
+    """记住在其原始卡片内真正播放结束的普通视频。"""
 
     def __init__(self) -> None:
         self._handled: set[tuple[str, int, int, str]] = set()
@@ -19,12 +19,12 @@ class VideoSession:
         )
 
     def is_handled(self, state: ChaoxingPageState, module_index: int) -> bool:
-        """Task points always require fresh platform completion evidence."""
+        """带任务点的视频始终需要新的平台完成证据。"""
         return (
             not state.modules[module_index].has_job_icon
             and self._identity(state, module_index) in self._handled
         )
 
     def mark_handled(self, state: ChaoxingPageState, module_index: int) -> None:
-        """Record completion after the handler has observed real media ending."""
+        """在处理器观察到真实媒体播放结束后记录其已完成。"""
         self._handled.add(self._identity(state, module_index))
