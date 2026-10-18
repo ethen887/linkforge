@@ -30,7 +30,7 @@ _CONTROLS = '[role="radio"], [role="checkbox"], input[type="radio"], input[type=
 OPTION_SELECTOR = f":is({_CONTROLS}):not(:is({_CONTROLS}) :is({_CONTROLS}))"
 logger = logging.getLogger(__name__)
 _QUESTION_SCRIPT = r"""element => ({
-    title: element.querySelector('.Zy_TItle')?.textContent || '',
+    title: element.querySelector('.Zy_TItle, .mark_name')?.textContent || '',
     hidden_answers: Array.from(element.querySelectorAll('input[type="hidden"]'))
         .filter(input => /^answer\d+$/.test(input.id) || /^answer\d+$/.test(input.name))
         .map(input => input.value),
@@ -46,7 +46,7 @@ _OPTION_SCRIPT = """element => {
     const markers = element.querySelectorAll(kind === 'checkbox' ? '.num_option_dx' : '.num_option');
     const marker = markers.length === 1 ? markers[0] : null;
     const value = marker?.getAttribute('data');
-    const question = element.closest('.TiMu.newTiMu');
+    const question = element.closest('.TiMu.newTiMu, .questionLi');
     return {
         kind: kind,
         marker_count: markers.length,

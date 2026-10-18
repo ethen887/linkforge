@@ -9,13 +9,14 @@ Observation、Action 和 Agent Loop 等上层逻辑不属于本模块职责。
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from types import TracebackType
 from typing import Literal, Self
 
 from linkforge.browser.element import BrowserElement
 from linkforge.browser.exceptions import BrowserError
-from linkforge.browser.models import BrowserPage, InteractiveElement
+from linkforge.browser.models import BrowserJSONResponse, BrowserPage, InteractiveElement
 
 
 class Browser(ABC):
@@ -52,6 +53,12 @@ class Browser(ABC):
     def page_element_scope(self, selector: str) -> AbstractContextManager[tuple[BrowserElement, ...]]:
         """捕获所选页面主 frame 中的节点，退出时释放引用。"""
         raise BrowserError("This browser does not support main-frame DOM elements.")
+
+    def capture_json_responses(
+        self, path: str, *, method: str = "POST", form_fields: Mapping[str, str] | None = None
+    ) -> AbstractContextManager[list[BrowserJSONResponse]]:
+        """被动收集当前主页面 UI 操作产生的指定路径响应，不发起请求。"""
+        raise BrowserError("This browser does not support response observation.")
 
     def __enter__(self) -> Self:
         """

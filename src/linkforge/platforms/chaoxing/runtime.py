@@ -7,6 +7,12 @@ from linkforge.application.runtime import PlatformRuntime
 from linkforge.application.task_runner import TaskRunner
 from linkforge.browser.base import Browser
 from linkforge.llm.base import LLM
+from linkforge.platforms.chaoxing.assignment_handler import (
+    AssignmentDetector,
+    AssignmentSubmitter,
+    StandaloneAssignmentHandler,
+)
+from linkforge.platforms.chaoxing.assignment_page import assignment_identity
 from linkforge.platforms.chaoxing.comment_handler import (
     ChaoxingCommentTaskHandler,
     LLMCommentBodyGenerator,
@@ -50,6 +56,23 @@ class ChaoxingPlatformRuntime(PlatformRuntime):
     def build_runner(self, *, browser: Browser, llm: LLM, model: str) -> TaskRunner:
         """为本次运行创建学习通状态、处理器与任务运行器。"""
         logger.info("Building Chaoxing task workflow")
+        if assignment_identity(browser.current_url()) is not None:
+            assignment_detector = AssignmentDetector(browser)
+            handler = StandaloneAssignmentHandler(
+                browser,
+                solver=LLMQuizSolver(llm=llm, model=model),
+                submitter=AssignmentSubmitter(),
+                detector=assignment_detector,
+            )
+            logger.info("Standalone assignment workflow ready")
+            return TaskRunner(
+                detector=assignment_detector,
+                video_handler=handler,
+                document_handler=handler,
+                content_handler=handler,
+                comment_handler=handler,
+                quiz_handler=handler,
+            )
         comment_session = CommentSession()
         video_session = VideoSession()
         innerbook_session = InnerbookSession()

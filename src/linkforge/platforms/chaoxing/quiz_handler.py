@@ -3,6 +3,7 @@
 import logging
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from math import isfinite
 from typing import Protocol, TypeVar
@@ -96,6 +97,10 @@ class _QuizSnapshotChangedError(ChaoxingQuizStateError):
     """两次全新检查之间，未提交的 quiz DOM 发生了变化。"""
 
 
+class QuizStoppedError(Exception):
+    """协作停止，避免后续选项点击或提交。"""
+
+
 class ChaoxingQuizTaskHandler(TaskHandler):
     """作答一道 quiz；run() 仅在平台完成被校验后返回。
 
@@ -123,6 +128,14 @@ class ChaoxingQuizTaskHandler(TaskHandler):
         self._sleep = sleep
         self._monotonic = monotonic
         self.last_answers: tuple[QuizAnswer, ...] = ()
+        self._should_stop: Callable[[], bool] | None = None
+
+    def _check_stop(self) -> None:
+        if self._should_stop is not None and self._should_stop():
+            raise QuizStoppedError
+
+    def _question_scope(self, module_url: str) -> AbstractContextManager[tuple[BrowserElement, ...]]:
+        return self._browser.element_scope(QUESTION_FRAME_PATH, QUESTION_SELECTOR, ancestor_url=module_url)
 
     def _target(self) -> tuple[str, str]:
         if self._detector.detect() is not TaskType.QUIZ:
@@ -161,12 +174,9 @@ class ChaoxingQuizTaskHandler(TaskHandler):
             deadline = self._monotonic() + self._config.readiness_timeout_seconds
         last_error: BrowserError | None = None
         while True:
+            self._check_stop()
             try:
-                with self._browser.element_scope(
-                    QUESTION_FRAME_PATH,
-                    QUESTION_SELECTOR,
-                    ancestor_url=module_url,
-                ) as elements:
+                with self._question_scope(module_url) as elements:
                     if not elements:
                         raise BrowserError("Quiz question frame contains no questions.")
                     return operation(elements)
@@ -333,6 +343,7 @@ class ChaoxingQuizTaskHandler(TaskHandler):
 
     def _answer_all(self) -> tuple[str, str]:
         self.last_answers = ()
+        self._check_stop()
         try:
             content_url, module_url = self._target()
             deadline = self._monotonic() + self._config.readiness_timeout_seconds
@@ -342,6 +353,7 @@ class ChaoxingQuizTaskHandler(TaskHandler):
             answers: list[QuizAnswer] = []
             index = 0
             while index < question_count:
+                self._check_stop()
                 if self._target() != (content_url, module_url):
                     raise ChaoxingQuizStateError("Active Quiz changed while answering.")
 
@@ -359,11 +371,15 @@ class ChaoxingQuizTaskHandler(TaskHandler):
                     index = 0
                     continue
                 try:
+                    self._check_stop()
                     answer = self._solver.solve(question)
                 except ChaoxingQuizError:
                     raise
+                except QuizStoppedError:
+                    raise
                 except Exception as exc:
                     raise ChaoxingQuizSolverError(f"Question {question.index + 1}: solver failed.") from exc
+                self._check_stop()
                 validate_answer(question, answer)
                 if self._target() != (content_url, module_url):
                     raise ChaoxingQuizStateError("Active Quiz changed during vision request.")
@@ -399,9 +415,17 @@ class ChaoxingQuizTaskHandler(TaskHandler):
 
     def run(self) -> None:
         """作答并提交一道 quiz，然后校验平台的完成状态。"""
+        self.run_interruptibly()
+
+    def run_interruptibly(self, *, should_stop: Callable[[], bool] | None = None) -> None:
+        """在题目处理和提交前响应停止请求。"""
+        self._should_stop = should_stop
         logger.info("Quiz handler started")
         try:
             self._run()
+        except QuizStoppedError:
+            logger.info("Quiz handler stopped")
+            return
         except BaseException:
             logger.error("Quiz handler failed")
             raise
@@ -409,6 +433,7 @@ class ChaoxingQuizTaskHandler(TaskHandler):
 
     def _run(self) -> None:
         content_url, module_url = self._answer_all()
+        self._check_stop()
         if self._submitter is None:
             raise ChaoxingQuizSubmissionError(
                 "All answers verified; stopped before submission. The real visible submit entry, "
