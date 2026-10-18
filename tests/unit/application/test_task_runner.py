@@ -10,6 +10,7 @@ import linkforge.application.task_runner as task_runner_module
 from linkforge.application.task_runner import (
     TaskDetector,
     TaskHandler,
+    TaskPageChangedError,
     TaskRecovery,
     TaskRunner,
     TaskType,
@@ -335,3 +336,27 @@ def test_recoverable_failure_continues_to_the_next_task(monkeypatch, unknown: bo
     assert detector.call_count == 3
     assert handlers[TaskType.DOCUMENT].call_count == 1
     assert events.index("recover") < events.index("document")
+
+
+def test_manual_page_change_redetects_without_recovery_or_issue(monkeypatch) -> None:
+    class Recovery:
+        issues = []
+
+        def checkpoint(self) -> None:
+            pass
+
+        def recover(self, task_type, error, should_stop) -> bool:
+            raise AssertionError("User navigation must not trigger error recovery.")
+
+    runner, detector, handlers = _runner(
+        [TaskType.VIDEO, TaskType.DOCUMENT, TaskType.COMPLETE], recovery=Recovery()
+    )
+
+    def changed() -> None:
+        raise TaskPageChangedError
+
+    monkeypatch.setattr(handlers[TaskType.VIDEO], "run", changed)
+    runner.run()
+    assert detector.call_count == 3
+    assert handlers[TaskType.DOCUMENT].call_count == 1
+    assert runner.issues == []

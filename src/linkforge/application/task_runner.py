@@ -50,6 +50,10 @@ class UnknownTaskError(RuntimeError):
     """当当前课程任务无法被识别时抛出。"""
 
 
+class TaskPageChangedError(Exception):
+    """平台确认课程页面已切换，需要重新检测而非恢复旧任务。"""
+
+
 class TaskRecovery(Protocol):
     """由平台验证问题位置并推进到后续内容。"""
 
@@ -133,6 +137,9 @@ class TaskRunner:
             logger.info("Dispatching task to %s handler", task_type.name)
             try:
                 handler.run_interruptibly(should_stop=should_stop)
+            except TaskPageChangedError:
+                logger.info("Course page changed; detecting the selected content again")
+                continue
             except Exception as exc:
                 if self._recover(task_type, exc, should_stop):
                     continue

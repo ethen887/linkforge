@@ -15,6 +15,7 @@ from linkforge.platforms.chaoxing.comment_state import CommentSession
 from linkforge.platforms.chaoxing.content_handler import ChaoxingContentTaskHandler
 from linkforge.platforms.chaoxing.document_handler import ChaoxingDocumentTaskHandler
 from linkforge.platforms.chaoxing.innerbook import InnerbookSession
+from linkforge.platforms.chaoxing.navigation import ChaoxingNavigationMonitor
 from linkforge.platforms.chaoxing.quiz_handler import ChaoxingQuizTaskHandler, QuizSubmitter
 from linkforge.platforms.chaoxing.quiz_solver import LLMQuizSolver
 from linkforge.platforms.chaoxing.recovery import ChaoxingTaskRecovery
@@ -52,6 +53,7 @@ class ChaoxingPlatformRuntime(PlatformRuntime):
         comment_session = CommentSession()
         video_session = VideoSession()
         innerbook_session = InnerbookSession()
+        navigation = ChaoxingNavigationMonitor(browser, on_course_url_changed=self._on_course_url_changed)
         detector = ChaoxingTaskDetector(
             browser,
             comment_session=comment_session,
@@ -66,7 +68,9 @@ class ChaoxingPlatformRuntime(PlatformRuntime):
 
         runner = TaskRunner(
             detector=detector,
-            video_handler=ChaoxingVideoTaskHandler(browser, video_session=video_session),
+            video_handler=ChaoxingVideoTaskHandler(
+                browser, video_session=video_session, navigation=navigation
+            ),
             document_handler=ChaoxingDocumentTaskHandler(
                 browser,
                 innerbook_session=innerbook_session,
@@ -86,7 +90,9 @@ class ChaoxingPlatformRuntime(PlatformRuntime):
                 detector=detector,
                 video_session=video_session,
             ),
-            recovery=ChaoxingTaskRecovery(browser, content_handler, video_session=video_session),
+            recovery=ChaoxingTaskRecovery(
+                browser, content_handler, video_session=video_session, navigation=navigation
+            ),
         )
         logger.info("Chaoxing task workflow ready")
         return runner
