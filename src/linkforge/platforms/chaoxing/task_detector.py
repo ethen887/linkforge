@@ -146,7 +146,9 @@ class ChaoxingTaskDetector(TaskDetector):
                     # 两次 frame 观察之间卡片可能发生变化。
                     if state.modules[module_index].url != urljoin(state.content_frame_url, module_url):
                         return self._unknown("module_changed_between_observations", stage, module_index)
-                    if self._video_session.is_handled(state, module_index):
+                    if self._video_session.is_handled(
+                        state, module_index
+                    ) or self._video_session.is_deferred(state, module_index):
                         continue
 
                 if COMMENT_MODULE_PATH in module_url and self._comment_session is not None:

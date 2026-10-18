@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from linkforge.application.issues import RunIssue
 from linkforge.application.task_runner import TaskRunner
 from linkforge.browser.base import Browser
 from linkforge.browser.factory import create_browser
@@ -60,6 +61,7 @@ class LinkForgeApplication:
         self._browser_factory = browser_factory
         self._llm_factory = llm_factory
         self._stop_requested = False
+        self.issues: list[RunIssue] = []
 
     def run(self) -> None:
         """运行直至平台完成、响应停止请求或发生错误。"""
@@ -84,10 +86,11 @@ class LinkForgeApplication:
                     llm=llm,
                     model=self._config.model_config.model_name,
                 )
+                self.issues = getattr(runner, "issues", [])
                 runner.run(should_stop=self._should_stop)
                 logger.info("Platform runtime completed")
-        except BaseException:
-            logger.exception("Application runtime failed")
+        except BaseException as exc:
+            logger.error("Application runtime failed (%s)", type(exc).__name__)
             raise
         finally:
             logger.info("Application cleanup finished")

@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 import pytest
 
-from linkforge.application.task_runner import TaskType
+from linkforge.application.task_runner import TaskRunner, TaskType
 from linkforge.browser.base import Browser
 from linkforge.browser.playwright import PlaywrightBrowser
 from linkforge.platforms.chaoxing.content_handler import (
@@ -15,12 +15,97 @@ from linkforge.platforms.chaoxing.content_handler import (
 )
 from linkforge.platforms.chaoxing.dom import inspect_chaoxing_page
 from linkforge.platforms.chaoxing.exceptions import ChaoxingInspectionError
+from linkforge.platforms.chaoxing.recovery import ChaoxingTaskRecovery
 from linkforge.platforms.chaoxing.task_detector import ChaoxingTaskDetector
 from linkforge.platforms.chaoxing.video_handler import (
     ChaoxingVideoHandlerConfig,
     ChaoxingVideoTaskHandler,
 )
 from linkforge.platforms.chaoxing.video_state import VideoSession
+
+
+def test_failed_video_is_deferred_and_next_video_completes() -> None:
+    def video_url(*, broken: bool) -> str:
+        play = (
+            "throw new Error('fixture failure');"
+            if broken
+            else """
+            state.paused = false;
+            state.ended = true;
+            state.currentTime = 1;
+            parent.postMessage('ended', '*');
+        """
+        )
+        html = f"""
+            <video id="video"></video>
+            <script>
+                const state = {{paused: true, ended: false, currentTime: 0}};
+                const video = document.getElementById('video');
+                Object.defineProperties(video, {{
+                    paused: {{get: () => state.paused}},
+                    ended: {{get: () => state.ended}},
+                    currentTime: {{get: () => state.currentTime}},
+                    duration: {{get: () => 1}}, readyState: {{get: () => 4}},
+                }});
+                video.pause = () => {{state.paused = true;}};
+                video.play = () => {{{play}}};
+            </script>
+        """
+        return _data_url(html, f"/ananas/modules/video/index.html?broken={broken}")
+
+    modules = "".join(
+        f'<div class="ans-attach-ct"><span class="ans-job-icon"></span>'
+        f'<iframe src="{escape(video_url(broken=broken), quote=True)}"></iframe></div>'
+        for broken in (True, False)
+    )
+    content = (
+        modules
+        + """
+        <script>
+            addEventListener('message', event => {
+                if (event.data !== 'ended') return;
+                const frame = Array.from(document.querySelectorAll('iframe'))
+                    .find(candidate => candidate.contentWindow === event.source);
+                frame.closest('.ans-attach-ct').classList.add('ans-job-finished');
+            });
+        </script>
+    """
+    )
+    content_url = _data_url(content, "/mooc-ans/knowledge/cards?knowledgeid=100&num=0")
+    page = (
+        '<ul id="prev_tab"><li class="active">Videos</li></ul>'
+        f'<iframe src="{escape(content_url)}"></iframe>'
+    )
+    with PlaywrightBrowser(headless=True, timeout_ms=3_000) as browser:
+        browser.open(_data_url(page, "/mycourse/studentstudy"))
+        _wait_until_chaoxing_page_ready(browser)
+        session = VideoSession()
+        detector = ChaoxingTaskDetector(browser, video_session=session)
+        navigator = ChaoxingContentTaskHandler(browser, detector=detector)
+        recovery = ChaoxingTaskRecovery(browser, navigator, video_session=session)
+        video = ChaoxingVideoTaskHandler(
+            browser,
+            video_session=session,
+            config=ChaoxingVideoHandlerConfig(poll_interval_seconds=0.05, overall_timeout_seconds=5),
+        )
+        runner = TaskRunner(
+            detector=detector,
+            video_handler=video,
+            document_handler=navigator,
+            content_handler=navigator,
+            comment_handler=navigator,
+            quiz_handler=navigator,
+            recovery=recovery,
+        )
+        runner.run(should_stop=lambda: inspect_chaoxing_page(browser).modules[1].finished)
+        state = inspect_chaoxing_page(browser)
+        assert session.is_deferred(state, 0)
+        assert not state.modules[0].finished
+        assert not session.is_handled(state, 0)
+        assert state.modules[1].finished
+        assert len(runner.issues) == 1
+        assert "第 1 个模块" in runner.issues[0].location
+        assert detector.detect() is TaskType.CONTENT
 
 
 def _data_url(html: str, route: str) -> str:

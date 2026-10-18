@@ -76,7 +76,7 @@ class ChaoxingContentTaskHandler(TaskHandler):
         try:
             self._run()
         except BaseException:
-            logger.exception("Content handler failed")
+            logger.error("Content handler failed")
             raise
         logger.info("Content handler completed")
 
@@ -125,6 +125,27 @@ class ChaoxingContentTaskHandler(TaskHandler):
             return
 
         self._navigate_to_next_knowledge(initial_state)
+
+    def skip_failed_card(
+        self, expected: ChaoxingPageState, *, should_stop: Callable[[], bool] | None = None
+    ) -> bool:
+        """明确保留当前卡片待补做，验证身份后推进；不修改平台完成状态。"""
+        fresh = self._inspect_initial_state()
+        if (
+            fresh.content_frame_url != expected.content_frame_url
+            or fresh.active_tab_index != expected.active_tab_index
+            or tuple((m.url, m.frame_path) for m in fresh.modules)
+            != tuple((m.url, m.frame_path) for m in expected.modules)
+        ):
+            raise ContentNavigationError("The failed card changed before recovery.")
+        if should_stop is not None and should_stop():
+            return False
+        if fresh.has_next_tab:
+            self._navigate_to_next_card(fresh)
+        else:
+            # 跳过是本次运行的显式恢复动作，不使用目录完成标记作为依据。
+            self._navigate_to_next_knowledge(replace(fresh, knowledge_completed=False))
+        return True
 
     def _inspect_initial_state(
         self,

@@ -92,7 +92,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         try:
             completed = self._run(should_stop=should_stop)
         except BaseException:
-            logger.exception("Video handler failed")
+            logger.error("Video handler failed")
             raise
         if completed:
             logger.info("Video handler completed")
@@ -285,6 +285,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
                 for index, module in enumerate(state.modules)
                 if not (module.has_job_icon and module.finished)
                 and not self._video_session.is_handled(state, index)
+                and not self._video_session.is_deferred(state, index)
             ),
             None,
         )
@@ -297,7 +298,11 @@ class ChaoxingVideoTaskHandler(TaskHandler):
             if _VIDEO_MODULE_PATH in module.url and module.has_job_icon and module.finished
         ]
         if finished_videos or any(
-            _VIDEO_MODULE_PATH in module.url and self._video_session.is_handled(state, index)
+            _VIDEO_MODULE_PATH in module.url
+            and (
+                self._video_session.is_handled(state, index)
+                or self._video_session.is_deferred(state, index)
+            )
             for index, module in enumerate(state.modules)
         ):
             # 检测器与处理器是两次独立的观察；两者之间的完成是良性的。

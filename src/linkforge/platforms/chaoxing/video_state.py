@@ -8,6 +8,14 @@ class VideoSession:
 
     def __init__(self) -> None:
         self._handled: set[tuple[str, int, int, str]] = set()
+        self._deferred: set[tuple[str, int, int, str]] = set()
+
+    def defer(self, state: ChaoxingPageState, module_index: int) -> None:
+        """仅在本次运行中暂缓失败视频，不记录其为完成。"""
+        self._deferred.add(self._identity(state, module_index))
+
+    def is_deferred(self, state: ChaoxingPageState, module_index: int) -> bool:
+        return self._identity(state, module_index) in self._deferred
 
     @staticmethod
     def _identity(state: ChaoxingPageState, module_index: int) -> tuple[str, int, int, str]:

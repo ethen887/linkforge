@@ -39,6 +39,7 @@ from linkforge.platforms.chaoxing.exceptions import (
     ChaoxingInspectionError,
 )
 from linkforge.platforms.chaoxing.task_detector import ChaoxingTaskDetector
+from linkforge.platforms.chaoxing.video_state import VideoSession
 
 _ENTRY_FRAME_PATH = "/mooc-ans/bbscircle/chapter"
 _ENTRY_SELECTOR = "#topicMainDiv.PublicCardBox"
@@ -128,12 +129,14 @@ class ChaoxingCommentTaskHandler(TaskHandler):
         comment_session: CommentSession,
         body_generator: CommentBodyGenerator,
         detector: ChaoxingTaskDetector | None = None,
+        video_session: VideoSession | None = None,
         config: ChaoxingCommentHandlerConfig | None = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._browser = browser
         self._session = comment_session
+        self._video_session = video_session
         self._generator = body_generator
         self._detector = detector or ChaoxingTaskDetector(browser, comment_session=comment_session)
         self._config = config or ChaoxingCommentHandlerConfig()
@@ -147,7 +150,7 @@ class ChaoxingCommentTaskHandler(TaskHandler):
         try:
             self._run()
         except BaseException:
-            _LOGGER.exception("Comment handler failed")
+            _LOGGER.error("Comment handler failed")
             raise
         _LOGGER.info("Comment handler completed")
 
@@ -233,6 +236,11 @@ class ChaoxingCommentTaskHandler(TaskHandler):
         first_handled: _CommentTarget | None = None
         for index, module in enumerate(state.modules):
             if module.has_job_icon and module.finished:
+                continue
+            if self._video_session is not None and (
+                self._video_session.is_deferred(state, index)
+                or self._video_session.is_handled(state, index)
+            ):
                 continue
             if COMMENT_MODULE_PATH not in module.url:
                 if first_handled is None:

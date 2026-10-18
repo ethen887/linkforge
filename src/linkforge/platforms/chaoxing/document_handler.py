@@ -99,7 +99,7 @@ class ChaoxingDocumentTaskHandler(TaskHandler):
         try:
             self._run()
         except BaseException:
-            logger.exception("Document handler failed")
+            logger.error("Document handler failed")
             raise
         logger.info("Document handler completed")
 
@@ -210,7 +210,10 @@ class ChaoxingDocumentTaskHandler(TaskHandler):
                         raise ChaoxingDocumentStateError(
                             "The module changed between document observations."
                         )
-                    if "/ananas/modules/video/" in url and self._video_session.is_handled(state, index):
+                    if "/ananas/modules/video/" in url and (
+                        self._video_session.is_handled(state, index)
+                        or self._video_session.is_deferred(state, index)
+                    ):
                         handled.add(index)
                 inspection = replace(inspection, handled_video_indices=frozenset(handled))
             return inspect_innerbook_viewers(self._browser, inspection) if inspection is not None else None
