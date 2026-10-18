@@ -212,6 +212,20 @@ def test_gui_translates_video_stall_recovery(qt_application: QApplication) -> No
         window.close()
 
 
+def test_gui_reports_following_the_selected_course_page(qt_application: QApplication) -> None:
+    window = MainWindow(error_presenter=lambda *_args: None)
+    navigation_logger = logging.getLogger("linkforge.platforms.chaoxing.navigation")
+    previous_level = navigation_logger.level
+    try:
+        navigation_logger.setLevel(logging.INFO)
+        navigation_logger.info("Following the selected Chaoxing course page")
+        qt_application.processEvents()
+        assert "正在跟随当前选择的内容" in window.log_edit.toPlainText()
+    finally:
+        navigation_logger.setLevel(previous_level)
+        window.close()
+
+
 def test_gui_shows_manual_login_wait_and_course_readiness(qt_application: QApplication) -> None:
     window = MainWindow(error_presenter=lambda *_args: None)
     startup_logger = logging.getLogger("linkforge.platforms.chaoxing.startup")

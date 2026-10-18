@@ -139,6 +139,10 @@ def _user_message(record: logging.LogRecord) -> str | None:
     message = record.getMessage()
     if record.name == "linkforge.platforms.chaoxing.recovery":
         return message if message.startswith("课程问题：") else None
+    if record.name == "linkforge.platforms.chaoxing.navigation":
+        if message == "Following the selected Chaoxing course page":
+            return "检测到课程页面切换，正在跟随当前选择的内容"
+        return None
     if record.name == "linkforge.platforms.chaoxing.startup":
         return {
             "Chaoxing manual login required": "等待登录：请在浏览器中完成学习通登录，进入课程后将自动继续",

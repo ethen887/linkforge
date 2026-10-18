@@ -15,6 +15,7 @@ from linkforge.platforms.chaoxing.content_handler import (
 )
 from linkforge.platforms.chaoxing.dom import inspect_chaoxing_page
 from linkforge.platforms.chaoxing.exceptions import ChaoxingInspectionError
+from linkforge.platforms.chaoxing.navigation import ChaoxingNavigationMonitor
 from linkforge.platforms.chaoxing.recovery import ChaoxingTaskRecovery
 from linkforge.platforms.chaoxing.task_detector import ChaoxingTaskDetector
 from linkforge.platforms.chaoxing.video_handler import (
@@ -22,6 +23,94 @@ from linkforge.platforms.chaoxing.video_handler import (
     ChaoxingVideoTaskHandler,
 )
 from linkforge.platforms.chaoxing.video_state import VideoSession
+
+
+def test_manual_navigation_follows_new_video_without_deferring_old_video() -> None:
+    def content_url(chapter: str) -> str:
+        play = "state.paused = false;"
+        if chapter == "200":
+            play += "state.ended = true; state.currentTime = 1; parent.postMessage('ended', '*');"
+        video_html = f"""
+            <video id="video"></video>
+            <script>
+                const state = {{paused: true, ended: false, currentTime: 0}};
+                const video = document.getElementById('video');
+                Object.defineProperties(video, {{
+                    paused: {{get: () => state.paused}}, ended: {{get: () => state.ended}},
+                    currentTime: {{get: () => state.currentTime}},
+                    duration: {{get: () => 10}}, readyState: {{get: () => 4}},
+                }});
+                video.play = () => {{{play}}};
+            </script>
+        """
+        video = _data_url(video_html, f"/ananas/modules/video/index.html?chapter={chapter}")
+        content = f"""
+            <div id="task" class="ans-attach-ct"><span class="ans-job-icon"></span>
+                <iframe src="{escape(video, quote=True)}"></iframe>
+            </div>
+            <script>addEventListener('message', event => {{
+                if (event.data === 'ended') {{
+                    document.getElementById('task').classList.add('ans-job-finished');
+                }}
+            }});</script>
+        """
+        return _data_url(content, f"/mooc-ans/knowledge/cards?knowledgeid={chapter}&num=0")
+
+    first, selected = content_url("100"), content_url("200")
+    page = f"""
+        <ul id="prev_tab"><li class="active">Video</li></ul>
+        <button id="choose-b" onclick="document.getElementById('card').src = this.dataset.target;"
+            data-target="{escape(selected, quote=True)}">Select B</button>
+        <iframe id="card" src="{escape(first, quote=True)}"></iframe>
+    """
+    with PlaywrightBrowser(headless=True, timeout_ms=3_000) as browser:
+        browser.open(_data_url(page, "/mycourse/studentstudy"))
+        _wait_until_chaoxing_page_ready(browser)
+        original = inspect_chaoxing_page(browser)
+        session = VideoSession()
+        detector = ChaoxingTaskDetector(browser, video_session=session)
+        navigator = ChaoxingContentTaskHandler(browser, detector=detector)
+        navigation = ChaoxingNavigationMonitor(browser, poll_interval_seconds=0.05)
+        recovery = ChaoxingTaskRecovery(browser, navigator, video_session=session, navigation=navigation)
+        switched = False
+
+        def sleep(seconds: float) -> None:
+            nonlocal switched
+            if not switched:
+                switched = True
+                browser.click("#choose-b")
+            time.sleep(seconds)
+
+        handler = ChaoxingVideoTaskHandler(
+            browser,
+            video_session=session,
+            navigation=navigation,
+            sleep=sleep,
+            config=ChaoxingVideoHandlerConfig(poll_interval_seconds=0.05, overall_timeout_seconds=5),
+        )
+        runner = TaskRunner(
+            detector=detector,
+            video_handler=handler,
+            document_handler=navigator,
+            content_handler=navigator,
+            comment_handler=navigator,
+            quiz_handler=navigator,
+            recovery=recovery,
+        )
+
+        def finished() -> bool:
+            try:
+                state = inspect_chaoxing_page(browser)
+            except ChaoxingInspectionError:
+                return False
+            return state.knowledge_id == "200" and bool(state.modules) and state.modules[0].finished
+
+        runner.run(should_stop=finished)
+        assert switched
+        assert finished()
+        assert runner.issues == []
+        assert not session.is_deferred(original, 0)
+        assert not session.is_handled(original, 0)
 
 
 def test_failed_video_is_deferred_and_next_video_completes() -> None:

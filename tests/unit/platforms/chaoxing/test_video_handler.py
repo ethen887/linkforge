@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from linkforge.application.task_runner import TaskHandler, TaskType
+from linkforge.application.task_runner import TaskHandler, TaskPageChangedError, TaskType
 from linkforge.browser.exceptions import BrowserError
 from linkforge.platforms.chaoxing.dom import inspect_chaoxing_page
 from linkforge.platforms.chaoxing.exceptions import (
@@ -206,6 +206,54 @@ def test_stop_during_inspection_does_not_request_playback() -> None:
     handler = _handler(browser, FakeClock())
     handler.run_interruptibly(should_stop=lambda: browser._state_index >= 2)
     assert len(browser.frame_evaluation_calls) == 2
+
+
+def _other_card(state: tuple[object, ...]) -> tuple[object, ...]:
+    return tuple(
+        {**frame, "frame_url": frame["frame_url"] + "&knowledgeid=200"}
+        if isinstance(frame, dict) and frame.get("frame_url") == _CONTENT_URL
+        else frame
+        for frame in state
+    )
+
+
+def test_manual_card_change_yields_without_failure_or_false_completion(caplog) -> None:
+    original = _page_state(_module(), video=_video())
+    selected = _other_card(original)
+    browser = ScriptedFrameBrowser([original, selected, selected])
+    handler = _handler(browser, FakeClock())
+    old_state = inspect_chaoxing_page(ScriptedFrameBrowser([original]))
+    with caplog.at_level(logging.INFO), pytest.raises(TaskPageChangedError):
+        handler.run()
+    assert "yielded to the selected" in caplog.text
+    assert "Video handler failed" not in caplog.text
+    assert "Video handler completed" not in caplog.text
+    assert not handler._video_session.is_handled(old_state, 0)
+    assert not handler._video_session.is_deferred(old_state, 0)
+
+
+def test_page_change_during_play_request_is_followed_without_error_log(caplog) -> None:
+    original = _page_state(_module(), video=_video(paused=True))
+    selected = _other_card(original)
+    browser = ScriptedFrameBrowser(
+        [original, original, selected, selected],
+        play_results=({"matched": False},),
+    )
+    with caplog.at_level(logging.INFO), pytest.raises(TaskPageChangedError):
+        _handler(browser, FakeClock()).run()
+    assert "Video handler failed" not in caplog.text
+
+
+def test_stop_wins_over_detected_page_change(caplog) -> None:
+    original = _page_state(_module(), video=_video())
+    selected = _other_card(original)
+    browser = ScriptedFrameBrowser([original, selected])
+    clock = FakeClock()
+    with caplog.at_level(logging.INFO):
+        _handler(browser, clock).run_interruptibly(should_stop=lambda: clock.now > 0)
+    assert "Video handler stopped" in caplog.text
+    assert "Video handler completed" not in caplog.text
+    assert "Video handler failed" not in caplog.text
 
 
 def test_paused_pending_video_is_played_then_platform_completion_returns() -> None:

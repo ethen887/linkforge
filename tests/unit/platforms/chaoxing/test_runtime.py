@@ -136,6 +136,7 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
             comment_session: object | None = None,
             body_generator: object | None = None,
             video_session: VideoSession | None = None,
+            navigation: object | None = None,
             innerbook_session: InnerbookSession | None = None,
             on_course_url_changed: Callable[[str], None] | None = None,
         ) -> RecordingHandler:

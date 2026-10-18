@@ -23,6 +23,7 @@ from linkforge.platforms.chaoxing.exceptions import (
     VideoTimeoutError,
 )
 from linkforge.platforms.chaoxing.models import ChaoxingPageState
+from linkforge.platforms.chaoxing.navigation import ChaoxingNavigationMonitor
 from linkforge.platforms.chaoxing.video_state import VideoSession
 
 logger = logging.getLogger(__name__)
@@ -41,11 +42,17 @@ class ChaoxingTaskRecovery:
     """只在原课程卡片身份仍一致时尝试向前导航，每个卡片最多一次。"""
 
     def __init__(
-        self, browser: Browser, navigator: ChaoxingContentTaskHandler, *, video_session: VideoSession
+        self,
+        browser: Browser,
+        navigator: ChaoxingContentTaskHandler,
+        *,
+        video_session: VideoSession,
+        navigation: ChaoxingNavigationMonitor | None = None,
     ) -> None:
         self._browser = browser
         self._navigator = navigator
         self._video_session = video_session
+        self._navigation = navigation or ChaoxingNavigationMonitor(browser)
         self._checkpoint: ChaoxingPageState | None = None
         self._attempted: set[tuple[str, int]] = set()
         self._locations: dict[tuple[str, int], int] = {}
@@ -65,6 +72,13 @@ class ChaoxingTaskRecovery:
         if not isinstance(error, (ChaoxingTaskError, BrowserError, UnknownTaskError)):
             return False
         state = self._checkpoint
+        if (
+            state is not None
+            and not self._fatal(error)
+            and not (should_stop is not None and should_stop())
+            and self._navigation.follow_if_changed(state, should_stop=should_stop)
+        ):
+            return True
         location = "位置无法确认"
         key = None
         if state is not None:

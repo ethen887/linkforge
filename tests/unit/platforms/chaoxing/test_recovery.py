@@ -5,6 +5,7 @@ from dataclasses import replace
 
 import pytest
 
+import linkforge.platforms.chaoxing.navigation as navigation_module
 import linkforge.platforms.chaoxing.recovery as recovery_module
 from linkforge.application.task_runner import TaskType, UnknownTaskError
 from linkforge.browser.exceptions import BrowserClosedError
@@ -12,7 +13,7 @@ from linkforge.platforms.chaoxing.exceptions import ContentNavigationError, Vide
 from linkforge.platforms.chaoxing.models import ChaoxingModuleState, ChaoxingPageState
 from linkforge.platforms.chaoxing.recovery import ChaoxingTaskRecovery
 from linkforge.platforms.chaoxing.video_state import VideoSession
-from tests.fakes import FakeBrowser
+from tests.fakes import FakeBrowser, ManualClock
 
 
 def _state() -> ChaoxingPageState:
@@ -44,6 +45,7 @@ class FakeNavigator:
 def _recovery(monkeypatch):
     state = _state()
     monkeypatch.setattr(recovery_module, "inspect_chaoxing_page", lambda browser: state)
+    monkeypatch.setattr(navigation_module, "inspect_chaoxing_page", lambda browser: state)
     browser = FakeBrowser()
     navigator = FakeNavigator()
     session = VideoSession()
@@ -123,3 +125,17 @@ def test_unexpected_programming_error_is_not_hidden(monkeypatch):
     assert not recovery.recover(TaskType.VIDEO, TypeError("bug"), None)
     assert navigator.calls == 0
     assert recovery.issues == []
+
+
+def test_selected_new_page_bypasses_failure_skip_and_issue_reporting(monkeypatch):
+    recovery, _, navigator, session, original = _recovery(monkeypatch)
+    selected = replace(original, content_frame_url=original.content_frame_url + "&knowledgeid=200")
+    monkeypatch.setattr(navigation_module, "inspect_chaoxing_page", lambda browser: selected)
+    clock = ManualClock()
+    recovery._navigation = navigation_module.ChaoxingNavigationMonitor(
+        FakeBrowser(), sleep=clock.sleep, monotonic=clock
+    )
+    assert recovery.recover(TaskType.VIDEO, VideoPlaybackError("frame detached during click"), None)
+    assert recovery.issues == []
+    assert navigator.calls == 0
+    assert not session.is_deferred(original, 0)

@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from linkforge.application.task_runner import TaskHandler
+from linkforge.application.task_runner import TaskHandler, TaskPageChangedError
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserError
 from linkforge.platforms.chaoxing.dom import FRAME_PATH_SCRIPT, inspect_chaoxing_page
@@ -23,6 +23,7 @@ from linkforge.platforms.chaoxing.models import (
     ChaoxingPageState,
     ChaoxingVideoState,
 )
+from linkforge.platforms.chaoxing.navigation import ChaoxingNavigationMonitor, card_identity
 from linkforge.platforms.chaoxing.video_state import VideoSession
 
 _VIDEO_MODULE_PATH = "/ananas/modules/video/"
@@ -73,6 +74,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         *,
         config: ChaoxingVideoHandlerConfig | None = None,
         video_session: VideoSession | None = None,
+        navigation: ChaoxingNavigationMonitor | None = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -81,6 +83,15 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         self._video_session = video_session or VideoSession()
         self._sleep = sleep
         self._monotonic = monotonic
+        self._navigation = navigation or ChaoxingNavigationMonitor(
+            browser,
+            poll_interval_seconds=self._config.poll_interval_seconds,
+            timeout_seconds=self._config.video_available_timeout_seconds,
+            sleep=sleep,
+            monotonic=monotonic,
+        )
+        self._active_state: ChaoxingPageState | None = None
+        self._page_change_checked = False
 
     def run(self) -> None:
         """运行当前视频，直到观察到其适用的完成状态为止。"""
@@ -89,8 +100,26 @@ class ChaoxingVideoTaskHandler(TaskHandler):
     def run_interruptibly(self, *, should_stop: Callable[[], bool] | None = None) -> None:
         """轮询视频时响应停止，并保留未完成的视频状态。"""
         logger.info("Video handler started")
+        self._active_state = None
+        self._page_change_checked = False
         try:
             completed = self._run(should_stop=should_stop)
+        except TaskPageChangedError:
+            logger.info("Video handler yielded to the selected course page")
+            raise
+        except (VideoTaskError, BrowserError):
+            if should_stop is not None and should_stop():
+                logger.info("Video handler stopped")
+                return
+            if (
+                not self._page_change_checked
+                and self._active_state is not None
+                and self._navigation.follow_if_changed(self._active_state, should_stop=should_stop)
+            ):
+                logger.info("Video handler yielded to the selected course page")
+                raise TaskPageChangedError from None
+            logger.error("Video handler failed")
+            raise
         except BaseException:
             logger.error("Video handler failed")
             raise
@@ -104,6 +133,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         if should_stop is not None and should_stop():
             return False
         initial_state = self._inspect()
+        self._active_state = initial_state
         target = self._locate_target(initial_state)
         if target is None:
             return True
@@ -153,10 +183,14 @@ class ChaoxingVideoTaskHandler(TaskHandler):
             inspection_failed_since = None
             if should_stop is not None and should_stop():
                 return False
-            if (
-                state.content_frame_url != initial_state.content_frame_url
-                or state.active_tab_index != initial_state.active_tab_index
-            ):
+            if card_identity(state) != card_identity(initial_state):
+                self._page_change_checked = True
+                if self._navigation.follow_if_changed(
+                    initial_state, observed=state, should_stop=should_stop
+                ):
+                    raise TaskPageChangedError
+                if should_stop is not None and should_stop():
+                    return False
                 raise VideoTaskError("The Chaoxing card changed before video completion could be verified.")
             current_module = self._find_module(state, target)
             if current_module is not None and current_module.has_job_icon:
