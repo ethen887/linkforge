@@ -1,5 +1,6 @@
 """Unit tests for the deterministic Chaoxing video lifecycle."""
 
+import logging
 from typing import Any
 
 import pytest
@@ -164,6 +165,47 @@ def _handler(
         sleep=clock.sleep,
         monotonic=clock.monotonic,
     )
+
+
+@pytest.mark.parametrize("has_job_icon", [True, False])
+@pytest.mark.parametrize("video_state", ["playing", "paused", "missing", "ended"])
+def test_stop_during_video_polling_preserves_unfinished_state(
+    has_job_icon: bool, video_state: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    state = _page_state(
+        _module(has_job_icon=has_job_icon),
+        video=None
+        if video_state == "missing"
+        else _video(paused=video_state == "paused", ended=video_state == "ended"),
+    )
+    browser = ScriptedFrameBrowser([state])
+    clock = FakeClock()
+    session = VideoSession()
+    handler = ChaoxingVideoTaskHandler(
+        browser, video_session=session, sleep=clock.sleep, monotonic=clock.monotonic
+    )
+
+    with caplog.at_level(logging.INFO):
+        handler.run_interruptibly(should_stop=lambda: clock.now >= 1.0)
+
+    assert clock.now == 1.0
+    assert not session.is_handled(inspect_chaoxing_page(browser), 0)
+    assert "Video handler stopped" in caplog.text
+    assert "Video handler completed" not in caplog.text
+    assert "Video handler failed" not in caplog.text
+
+
+def test_stop_before_video_start_does_not_inspect_or_play() -> None:
+    browser = ScriptedFrameBrowser([])
+    _handler(browser, FakeClock()).run_interruptibly(should_stop=lambda: True)
+    assert browser.frame_evaluation_calls == []
+
+
+def test_stop_during_inspection_does_not_request_playback() -> None:
+    browser = ScriptedFrameBrowser([_page_state(_module(), video=_video(paused=True))])
+    handler = _handler(browser, FakeClock())
+    handler.run_interruptibly(should_stop=lambda: browser._state_index >= 2)
+    assert len(browser.frame_evaluation_calls) == 2
 
 
 def test_paused_pending_video_is_played_then_platform_completion_returns() -> None:

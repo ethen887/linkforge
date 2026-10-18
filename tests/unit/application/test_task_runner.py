@@ -257,6 +257,34 @@ def test_stop_request_exits_at_task_boundary_before_detecting_again() -> None:
     )
 
 
+def test_runner_passes_stop_request_into_active_handler() -> None:
+    stopped = False
+
+    class InterruptibleHandler(RecordingTaskHandler):
+        def run_interruptibly(self, *, should_stop: Callable[[], bool] | None = None) -> None:
+            nonlocal stopped
+            assert should_stop is not None
+            assert not should_stop()
+            stopped = True
+            assert should_stop()
+
+        def run(self) -> None:
+            raise AssertionError("The runner must use the interruptible entry point.")
+
+    detector = RecordingTaskDetector([TaskType.VIDEO])
+    handler = InterruptibleHandler("video")
+    runner = TaskRunner(
+        detector=detector,
+        video_handler=handler,
+        document_handler=handler,
+        content_handler=handler,
+        comment_handler=handler,
+        quiz_handler=handler,
+    )
+    runner.run(should_stop=lambda: stopped)
+    assert detector.call_count == 1
+
+
 def test_application_runtime_has_no_platform_or_playwright_dependency() -> None:
     syntax_tree = ast.parse(inspect.getsource(task_runner_module))
     imported_modules = {
