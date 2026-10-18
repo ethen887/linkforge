@@ -379,8 +379,8 @@ class MainWindow(QMainWindow):
         }:
             return
         self._worker.request_stop()
-        self._set_state(RuntimeState.STOPPING, "当前任务完成后将安全退出。")
-        self._append_log("正在停止，当前任务完成后将安全退出")
+        self._set_state(RuntimeState.STOPPING, "正在停止；视频无需播放完成，清理浏览器后退出。")
+        self._append_log("正在停止；视频无需播放完成，正在等待任务响应并清理浏览器")
 
     def _on_course_url_changed(self, course_url: str) -> None:
         self.course_url_edit.setText(course_url)
@@ -395,6 +395,10 @@ class MainWindow(QMainWindow):
             self._append_log("LinkForge 已开始运行")
 
     def _on_completed(self) -> None:
+        if self._state is RuntimeState.STOPPING:
+            self._set_state(RuntimeState.FINISHED, "运行已停止，可以再次开始。")
+            self._append_log("运行已停止")
+            return
         self._set_state(RuntimeState.FINISHED, "运行已完成，可以再次开始。")
         self._append_log("运行已完成")
 

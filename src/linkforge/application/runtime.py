@@ -62,7 +62,7 @@ class LinkForgeApplication:
         self._stop_requested = False
 
     def run(self) -> None:
-        """运行直至平台完成、在任务边界停止或发生错误。"""
+        """运行直至平台完成、响应停止请求或发生错误。"""
         logger.info("Application run started")
         try:
             browser = self._browser_factory(self._config.browser_config)
@@ -93,7 +93,7 @@ class LinkForgeApplication:
             logger.info("Application cleanup finished")
 
     def stop(self) -> None:
-        """请求在准备期间或下一个任务边界处停止。"""
+        """请求停止，由准备流程或支持中断的任务响应并清理资源。"""
         self._stop_requested = True
         logger.info("Application stop requested")
 

@@ -5,7 +5,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import linkforge.platforms.chaoxing.runtime as runtime_module
-from linkforge.application.task_runner import TaskRunner, TaskType
+from linkforge.application.task_runner import TaskHandler, TaskRunner, TaskType
 from linkforge.browser.base import Browser
 from linkforge.llm.base import LLM, LLMMessage, LLMResponse
 from linkforge.platforms.chaoxing.comment_state import CommentSession
@@ -59,7 +59,7 @@ class ScriptedDetector:
         return next(self._tasks)
 
 
-class RecordingHandler:
+class RecordingHandler(TaskHandler):
     def __init__(self, name: str, events: list[str]) -> None:
         self._name = name
         self._events = events

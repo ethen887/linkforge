@@ -38,6 +38,10 @@ class TaskHandler(ABC):
         """运行当前任务直至其完成。"""
         raise NotImplementedError
 
+    def run_interruptibly(self, *, should_stop: Callable[[], bool] | None = None) -> None:
+        """运行任务；支持中途停止的处理器可覆盖此方法。"""
+        self.run()
+
 
 class UnknownTaskError(RuntimeError):
     """当当前课程任务无法被识别时抛出。"""
@@ -75,7 +79,7 @@ class TaskRunner:
         self._sleep = sleep
 
     def run(self, *, should_stop: Callable[[], bool] | None = None) -> None:
-        """分派任务直至完成或在任务边界处收到停止请求。"""
+        """分派任务直至完成或收到停止请求，并向处理器传递停止回调。"""
         while True:
             if should_stop is not None and should_stop():
                 logger.info("Task runner stopped at task boundary")
@@ -105,7 +109,7 @@ class TaskRunner:
 
             logger.info("Dispatching task to %s handler", task_type.name)
             try:
-                handler.run()
+                handler.run_interruptibly(should_stop=should_stop)
             except BaseException:
                 logger.error("%s handler failure propagated to task runner", task_type.name)
                 raise

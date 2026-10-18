@@ -8,7 +8,7 @@ import pytest
 
 import linkforge.application.runtime as runtime_module
 from linkforge.application.runtime import ApplicationConfig, LinkForgeApplication
-from linkforge.application.task_runner import TaskRunner
+from linkforge.application.task_runner import TaskDetector, TaskHandler, TaskRunner, TaskType
 from linkforge.browser.base import Browser
 from linkforge.config.settings import BrowserConfig, ModelConfig
 from linkforge.llm.base import LLM, LLMMessage, LLMResponse
@@ -228,6 +228,46 @@ def test_stop_during_preparation_closes_browser_without_building_tasks() -> None
     assert "platform.build_runner" not in events
     assert "runner.run" not in events
     assert events[-1] == "browser.close"
+
+
+def test_stop_inside_active_task_returns_normally_and_closes_browser() -> None:
+    events: list[str] = []
+
+    class VideoDetector(TaskDetector):
+        def detect(self) -> TaskType:
+            events.append("detect")
+            return TaskType.VIDEO
+
+    class StoppableHandler(TaskHandler):
+        def run(self) -> None:
+            raise AssertionError("The active task must receive the stop callback.")
+
+        def run_interruptibly(self, *, should_stop: Callable[[], bool] | None = None) -> None:
+            assert should_stop is not None
+            assert not should_stop()
+            events.append("task.started")
+            application.stop()
+            assert should_stop()
+            events.append("task.stopped")
+
+    handler = StoppableHandler()
+    runner = TaskRunner(
+        detector=VideoDetector(),
+        video_handler=handler,
+        document_handler=handler,
+        content_handler=handler,
+        comment_handler=handler,
+        quiz_handler=handler,
+    )
+    browser = RecordingBrowser(events)
+    platform = RecordingPlatformRuntime(events, runner)
+    application = _application(events=events, browser=browser, llm=FakeLLM(), platform=platform)
+
+    application.run()
+
+    assert events[-3:] == ["task.started", "task.stopped", "browser.close"]
+    assert events.count("detect") == 1
+    assert events.count("browser.close") == 1
 
 
 @pytest.mark.parametrize("course_url", ["", " ", "\t"])

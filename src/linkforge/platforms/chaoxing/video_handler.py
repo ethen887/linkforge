@@ -84,20 +84,29 @@ class ChaoxingVideoTaskHandler(TaskHandler):
 
     def run(self) -> None:
         """运行当前视频，直到观察到其适用的完成状态为止。"""
+        self.run_interruptibly()
+
+    def run_interruptibly(self, *, should_stop: Callable[[], bool] | None = None) -> None:
+        """轮询视频时响应停止，并保留未完成的视频状态。"""
         logger.info("Video handler started")
         try:
-            self._run()
+            completed = self._run(should_stop=should_stop)
         except BaseException:
             logger.exception("Video handler failed")
             raise
-        logger.info("Video handler completed")
+        if completed:
+            logger.info("Video handler completed")
+        else:
+            logger.info("Video handler stopped")
 
-    def _run(self) -> None:
+    def _run(self, *, should_stop: Callable[[], bool] | None = None) -> bool:
         """驱动视频处理主循环，直到观察到平台或普通媒体的完成状态。"""
+        if should_stop is not None and should_stop():
+            return False
         initial_state = self._inspect()
         target = self._locate_target(initial_state)
         if target is None:
-            return
+            return True
         logger.debug(
             "Video target selected: module_count=%d, same_url_count=%d, frame_path=%s",
             len(initial_state.modules),
@@ -121,6 +130,8 @@ class ChaoxingVideoTaskHandler(TaskHandler):
         last_recovery_at = started_at
 
         while True:
+            if should_stop is not None and should_stop():
+                return False
             now = self._monotonic()
             if now - started_at >= self._config.overall_timeout_seconds:
                 raise VideoTimeoutError(
@@ -140,6 +151,8 @@ class ChaoxingVideoTaskHandler(TaskHandler):
                 continue
 
             inspection_failed_since = None
+            if should_stop is not None and should_stop():
+                return False
             if (
                 state.content_frame_url != initial_state.content_frame_url
                 or state.active_tab_index != initial_state.active_tab_index
@@ -149,7 +162,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
             if current_module is not None and current_module.has_job_icon:
                 requires_platform_completion = True
             if current_module is not None and current_module.has_job_icon and current_module.finished:
-                return
+                return True
             if current_module is None:
                 if module_missing_since is None:
                     module_missing_since = now
@@ -199,7 +212,7 @@ class ChaoxingVideoTaskHandler(TaskHandler):
                         logger.info(
                             "Ordinary video completed after real media ending and marker readiness wait"
                         )
-                        return
+                        return True
                 elif now - media_ended_since >= self._config.platform_finished_timeout_seconds:
                     raise VideoTimeoutError(
                         "The media ended, but Chaoxing did not confirm the task point as finished."

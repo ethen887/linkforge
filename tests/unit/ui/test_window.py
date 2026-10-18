@@ -320,9 +320,12 @@ def test_stop_calls_application_stop_and_prevents_duplicate_start(
     assert window.state is RuntimeState.STOPPING
     assert fake.stop_called.wait(timeout=1)
     assert not window.stop_button.isEnabled()
+    assert "视频无需播放完成" in window.statusBar().currentMessage()
+    assert "当前任务完成后" not in window.log_edit.toPlainText()
 
     _wait_until(qt_application, lambda: window._thread is None)
     assert window.state is RuntimeState.FINISHED
+    assert "运行已停止" in window.statusBar().currentMessage()
 
     window.close()
     qt_application.processEvents()

@@ -78,7 +78,7 @@ class RuntimeWorker(QObject):
             self.finished.emit()
 
     def request_stop(self) -> None:
-        """请求应用在现有的任务边界处安全停止。"""
+        """请求应用停止；视频轮询期间即可响应。"""
         with self._lock:
             self._stop_requested = True
             application = self._application
@@ -161,6 +161,8 @@ def _user_message(record: logging.LogRecord) -> str | None:
         if record.name.endswith(module_suffix):
             if message == "Video stall recovery requested":
                 return "视频播放暂时停滞，已尝试暂停后继续播放"
+            if message == "Video handler stopped":
+                return "视频任务已停止，未完成的视频保留待续播"
             if message.endswith("handler started"):
                 return f"{display_name}开始"
             if message.endswith("handler completed"):
