@@ -14,6 +14,7 @@ import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from linkforge.application import ApplicationConfig
+from linkforge.application.issues import RunIssue
 from linkforge.config import MODEL_PROVIDERS
 from linkforge.ui import MainWindow, RuntimeState
 from linkforge.ui.settings import CREDENTIAL_SERVICE, UserSettings, UserSettingsStore
@@ -348,6 +349,55 @@ def test_close_running_window_requests_safe_stop(qt_application: QApplication) -
     assert fake.stop_called.wait(timeout=1)
     _wait_until(qt_application, lambda: window._thread is None)
     _wait_until(qt_application, lambda: not window.isVisible())
+
+
+@pytest.mark.parametrize("outcome", ["stop", "close", "finish", "error"])
+def test_run_issues_are_shown_once_after_cleanup(qt_application: QApplication, outcome: str) -> None:
+    issue = RunIssue("第 2 张卡片，第 1 个模块", "视频", "视频无法正常播放", "已暂缓，待补做")
+
+    class ApplicationWithIssues(BlockingApplication):
+        def __init__(self) -> None:
+            super().__init__()
+            self.issues = [issue]
+
+        def run(self) -> None:
+            super().run()
+            if outcome == "error":
+                raise RuntimeError("failure after a recoverable issue")
+
+    fake = ApplicationWithIssues()
+    summaries: list[str] = []
+
+    def present(summary: str) -> None:
+        summaries.append(summary)
+        # 模拟问题弹窗的嵌套事件循环：后台线程结束不能提前关闭主窗口。
+        qt_application.processEvents()
+        assert window.isVisible()
+
+    window = MainWindow(
+        application_factory=lambda config: fake,  # type: ignore[arg-type]
+        error_presenter=lambda *_args: None,
+        issue_presenter=present,
+    )
+    _fill_valid_form(window)
+    window.show()
+    window.start_button.click()
+    assert fake.run_started.wait(timeout=2)
+    _wait_until(qt_application, lambda: window.state is RuntimeState.RUNNING)
+    if outcome == "close":
+        window.close()
+    elif outcome == "stop":
+        window.stop_button.click()
+    else:
+        fake.release.set()
+    _wait_until(qt_application, lambda: window._thread is None and len(summaries) == 1)
+    assert issue.describe() in summaries[0]
+    assert issue.describe() in window.log_edit.toPlainText()
+    assert window.state is (RuntimeState.ERROR if outcome == "error" else RuntimeState.FINISHED_WITH_ISSUES)
+    if outcome == "close":
+        _wait_until(qt_application, lambda: not window.isVisible())
+    else:
+        window.close()
 
 
 def test_first_launch_preserves_default_model_and_empty_key(

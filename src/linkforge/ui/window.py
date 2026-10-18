@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from linkforge.application import ApplicationConfig
+from linkforge.application.issues import RunIssue
 from linkforge.composition import create_application
 from linkforge.config import MODEL_PROVIDERS, BrowserConfig, ModelConfig, create_model_config
 from linkforge.ui.community import CommunityDialog
@@ -52,6 +53,7 @@ class RuntimeState(Enum):
     RUNNING = "运行中"
     STOPPING = "正在停止"
     FINISHED = "已完成"
+    FINISHED_WITH_ISSUES = "已结束，有待处理问题"
     ERROR = "发生错误"
 
 
@@ -63,6 +65,7 @@ class MainWindow(QMainWindow):
         *,
         application_factory: ApplicationFactory = create_application,
         error_presenter: Callable[[str, str], None] | None = None,
+        issue_presenter: Callable[[str], None] | None = None,
         settings_store: UserSettingsStore | None = None,
         log_dir: Path | None = None,
     ) -> None:
@@ -70,11 +73,13 @@ class MainWindow(QMainWindow):
         self._application_factory = application_factory
         self._settings_store = settings_store if settings_store is not None else UserSettingsStore()
         self._error_presenter = error_presenter or self._show_error_dialog
+        self._issue_presenter = issue_presenter or self._show_issue_summary
         self._log_dir = log_dir
         self._state = RuntimeState.IDLE
         self._thread: QThread | None = None
         self._worker: RuntimeWorker | None = None
         self._close_when_finished = False
+        self._showing_issues = False
         self._log_handler = GuiLogHandler()
         self._log_handler.emitter.message.connect(self._append_log)
         logging.getLogger("linkforge").addHandler(self._log_handler)
@@ -332,6 +337,7 @@ class MainWindow(QMainWindow):
         worker.completed.connect(self._on_completed)
         worker.failed.connect(self._on_failed)
         worker.course_url_changed.connect(self._on_course_url_changed)
+        worker.issues_ready.connect(self._on_issues_ready)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(self._on_thread_finished)
@@ -407,11 +413,39 @@ class MainWindow(QMainWindow):
         self._append_log(f"运行出错：{error_type}")
         self._error_presenter(error_type, summary)
 
+    def _on_issues_ready(self, issues: tuple[RunIssue, ...]) -> None:
+        """在停止、关闭或运行结束后展示本次未解决的问题。"""
+        summary = f"本次运行遇到 {len(issues)} 项问题，相关内容仍需检查或补做：\n\n"
+        summary += "\n".join(f"{index}. {issue.describe()}" for index, issue in enumerate(issues, 1))
+        self._append_log(summary)
+        if self._state is RuntimeState.FINISHED:
+            self._set_state(
+                RuntimeState.FINISHED_WITH_ISSUES,
+                f"运行已结束，有 {len(issues)} 项问题待检查或补做。",
+            )
+        self._showing_issues = True
+        try:
+            self._issue_presenter(summary)
+        finally:
+            self._showing_issues = False
+            if self._close_when_finished and self._thread is None:
+                QTimer.singleShot(0, self.close)
+
+    def _show_issue_summary(self, summary: str) -> None:
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setWindowTitle("本次运行问题汇总")
+        dialog.setText("本次运行有内容未能完成，请查看详情并补做。")
+        dialog.setInformativeText("\n".join(summary.splitlines()[:7]))
+        dialog.setDetailedText(summary)
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        dialog.exec()
+
     def _on_thread_finished(self) -> None:
         self._thread = None
         self._worker = None
         self._apply_state()
-        if self._close_when_finished:
+        if self._close_when_finished and not self._showing_issues:
             QTimer.singleShot(0, self.close)
 
     def _set_state(self, state: RuntimeState, status_message: str) -> None:
@@ -426,6 +460,7 @@ class MainWindow(QMainWindow):
             in {
                 RuntimeState.IDLE,
                 RuntimeState.FINISHED,
+                RuntimeState.FINISHED_WITH_ISSUES,
                 RuntimeState.ERROR,
             }
             and not active

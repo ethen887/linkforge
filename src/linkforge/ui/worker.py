@@ -10,6 +10,7 @@ from threading import Lock
 from PySide6.QtCore import QObject, Signal, Slot
 
 from linkforge.application import ApplicationConfig, LinkForgeApplication
+from linkforge.application.issues import RunIssue
 from linkforge.ui.error_messages import user_error_message
 
 ApplicationFactory = Callable[[ApplicationConfig], LinkForgeApplication]
@@ -42,6 +43,7 @@ class RuntimeWorker(QObject):
     failed = Signal(str, str)
     finished = Signal()
     course_url_changed = Signal(str)
+    issues_ready = Signal(object)
 
     def __init__(self, config: ApplicationConfig, application_factory: ApplicationFactory) -> None:
         super().__init__()
@@ -54,6 +56,7 @@ class RuntimeWorker(QObject):
     @Slot()
     def run(self) -> None:
         """在所属的工作线程上构建并同步运行应用。"""
+        application: LinkForgeApplication | None = None
         try:
             config = replace(self._config, on_course_url_changed=self.course_url_changed.emit)
             application = self._application_factory(config)
@@ -73,6 +76,12 @@ class RuntimeWorker(QObject):
         else:
             self.completed.emit()
         finally:
+            issues: tuple[RunIssue, ...] = tuple(getattr(application, "issues", ()))
+            if issues:
+                logger.warning("本次运行有 %d 项问题待检查", len(issues))
+                for issue in issues:
+                    logger.warning("待检查：%s", issue.describe())
+                self.issues_ready.emit(issues)
             with self._lock:
                 self._application = None
             self.finished.emit()
@@ -128,6 +137,8 @@ def _safe_error_summary(summary: str, api_key: str) -> str:
 
 def _user_message(record: logging.LogRecord) -> str | None:
     message = record.getMessage()
+    if record.name == "linkforge.platforms.chaoxing.recovery":
+        return message if message.startswith("课程问题：") else None
     if record.name == "linkforge.platforms.chaoxing.startup":
         return {
             "Chaoxing manual login required": "等待登录：请在浏览器中完成学习通登录，进入课程后将自动继续",

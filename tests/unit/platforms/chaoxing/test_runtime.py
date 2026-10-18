@@ -179,7 +179,11 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
     assert solver_calls == [(llm, "vision-model"), (llm, "vision-model")]
     assert generator_calls == [(llm, "vision-model"), (llm, "vision-model")]
 
-    first_dependencies = handler_dependencies[:5]
+    # 内容导航器也供恢复流程使用，因此先于其他处理器创建。
+    first_dependencies = sorted(
+        handler_dependencies[:5],
+        key=lambda item: ["video", "document", "content", "quiz", "comment"].index(item[0]),
+    )
     assert [name for name, _, _, _ in first_dependencies] == [
         "video",
         "document",
@@ -190,8 +194,8 @@ def test_build_runner_composes_shared_run_scoped_dependencies(monkeypatch) -> No
     assert all(received_browser is browser for _, received_browser, _, _ in first_dependencies)
     assert first_dependencies[0][2] is records[0].video_session
     assert first_dependencies[1][2] == (records[0].innerbook_session, records[0].video_session)
-    assert handler_dependencies[6][2] == (records[1].innerbook_session, records[1].video_session)
-    assert handler_dependencies[5][2] is records[1].video_session
+    assert handler_dependencies[7][2] == (records[1].innerbook_session, records[1].video_session)
+    assert handler_dependencies[6][2] is records[1].video_session
     assert first_dependencies[2][2] is records[0].detector
     assert first_dependencies[3][2] == (
         records[0].detector,

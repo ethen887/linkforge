@@ -10,6 +10,7 @@ import linkforge.application.task_runner as task_runner_module
 from linkforge.application.task_runner import (
     TaskDetector,
     TaskHandler,
+    TaskRecovery,
     TaskRunner,
     TaskType,
     UnknownTaskError,
@@ -57,6 +58,7 @@ def _runner(
     unknown_retry_attempts: int | None = None,
     unknown_retry_interval_seconds: float = 0.5,
     sleep: Callable[[float], None] = _no_sleep,
+    recovery: TaskRecovery | None = None,
 ) -> tuple[TaskRunner, RecordingTaskDetector, dict[TaskType, RecordingTaskHandler]]:
     detector = RecordingTaskDetector(task_types, events=events)
     handlers = {
@@ -78,6 +80,7 @@ def _runner(
         ),
         unknown_retry_interval_seconds=unknown_retry_interval_seconds,
         sleep=sleep,
+        recovery=recovery,
     )
     return runner, detector, handlers
 
@@ -300,3 +303,35 @@ def test_application_runtime_has_no_platform_or_playwright_dependency() -> None:
         module == "playwright" or module.startswith("playwright.") for module in imported_modules
     )
     assert not any(module.startswith("linkforge.platforms") for module in imported_modules)
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+def test_recoverable_failure_continues_to_the_next_task(monkeypatch, unknown: bool) -> None:
+    events: list[str] = []
+
+    class Recovery:
+        issues = []
+
+        def checkpoint(self) -> None:
+            events.append("checkpoint")
+
+        def recover(self, task_type, error, should_stop) -> bool:
+            events.append("recover")
+            return True
+
+    runner, detector, handlers = _runner(
+        [TaskType.UNKNOWN if unknown else TaskType.VIDEO, TaskType.DOCUMENT, TaskType.COMPLETE],
+        events=events,
+        recovery=Recovery(),
+        unknown_retry_attempts=0,
+    )
+
+    def fail() -> None:
+        events.append("failed.video")
+        raise RuntimeError("task failed")
+
+    monkeypatch.setattr(handlers[TaskType.VIDEO], "run", fail)
+    runner.run()
+    assert detector.call_count == 3
+    assert handlers[TaskType.DOCUMENT].call_count == 1
+    assert events.index("recover") < events.index("document")

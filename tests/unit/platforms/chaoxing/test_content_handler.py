@@ -1,6 +1,7 @@
 """Unit tests for evidence-bounded Chaoxing content navigation."""
 
 from collections.abc import Callable
+from dataclasses import replace
 
 import pytest
 
@@ -9,6 +10,7 @@ from linkforge.platforms.chaoxing.content_handler import (
     ChaoxingContentHandlerConfig,
     ChaoxingContentTaskHandler,
 )
+from linkforge.platforms.chaoxing.dom import inspect_chaoxing_page
 from linkforge.platforms.chaoxing.exceptions import (
     ChaoxingInspectionError,
     ContentNavigationError,
@@ -17,6 +19,38 @@ from tests.fakes import FakeBrowser
 
 _PAGE_URL = "https://mooc1.chaoxing.com/mycourse/studentstudy"
 _CONTENT_BASE_URL = "https://mooc1.chaoxing.com/mooc-ans/knowledge/cards"
+
+
+def test_recovery_skips_pending_card_without_claiming_completion(monkeypatch) -> None:
+    browser = ScriptedContentBrowser([_state(has_next=True, modules=[_document_module()])])
+    state = inspect_chaoxing_page(browser)
+    handler = _handler(browser, FakeClock())
+    calls = []
+    monkeypatch.setattr(handler, "_navigate_to_next_card", calls.append)
+    assert handler.skip_failed_card(state)
+    assert calls == [state]
+    assert not state.knowledge_completed
+
+
+def test_recovery_refuses_changed_card_before_clicking(monkeypatch) -> None:
+    browser = ScriptedContentBrowser([_state(has_next=True)])
+    state = inspect_chaoxing_page(browser)
+    handler = _handler(browser, FakeClock())
+    calls = []
+    monkeypatch.setattr(handler, "_navigate_to_next_card", calls.append)
+    with pytest.raises(ContentNavigationError, match="changed"):
+        handler.skip_failed_card(replace(state, active_tab_index=1))
+    assert calls == []
+
+
+def test_recovery_stop_prevents_navigation(monkeypatch) -> None:
+    browser = ScriptedContentBrowser([_state(has_next=True)])
+    state = inspect_chaoxing_page(browser)
+    handler = _handler(browser, FakeClock())
+    calls = []
+    monkeypatch.setattr(handler, "_navigate_to_next_card", calls.append)
+    assert not handler.skip_failed_card(state, should_stop=lambda: True)
+    assert calls == []
 
 
 class FakeClock:

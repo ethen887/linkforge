@@ -403,7 +403,7 @@ class ChaoxingQuizTaskHandler(TaskHandler):
         try:
             self._run()
         except BaseException:
-            logger.exception("Quiz handler failed")
+            logger.error("Quiz handler failed")
             raise
         logger.info("Quiz handler completed")
 
