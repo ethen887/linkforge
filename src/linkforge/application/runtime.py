@@ -11,6 +11,7 @@ from linkforge.browser.base import Browser
 from linkforge.browser.factory import create_browser
 from linkforge.config.settings import BrowserConfig, ModelConfig
 from linkforge.llm.base import LLM
+from linkforge.llm.errors import ModelRequestCancelledError
 from linkforge.llm.factory import create_model_client
 
 BrowserFactory = Callable[[BrowserConfig], Browser]
@@ -66,9 +67,11 @@ class LinkForgeApplication:
     def run(self) -> None:
         """运行直至平台完成、响应停止请求或发生错误。"""
         logger.info("Application run started")
+        llm: LLM | None = None
         try:
             browser = self._browser_factory(self._config.browser_config)
             llm = self._llm_factory(self._config.model_config)
+            llm.configure_runtime(should_stop=self._should_stop)
 
             with browser:
                 logger.info("Browser started")
@@ -89,10 +92,16 @@ class LinkForgeApplication:
                 self.issues = getattr(runner, "issues", [])
                 runner.run(should_stop=self._should_stop)
                 logger.info("Platform runtime completed")
+        except ModelRequestCancelledError:
+            if not self._should_stop():
+                raise
+            logger.info("Application model request cancelled")
         except BaseException as exc:
             logger.error("Application runtime failed (%s)", type(exc).__name__)
             raise
         finally:
+            if llm is not None:
+                llm.close()
             logger.info("Application cleanup finished")
 
     def stop(self) -> None:

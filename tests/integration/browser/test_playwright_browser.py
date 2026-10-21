@@ -47,6 +47,24 @@ def _make_data_url(html: str) -> str:
     return f"data:text/html;charset=utf-8,{quote(html)}"
 
 
+def test_model_network_loop_does_not_conflict_with_sync_playwright(browser):
+    import asyncio
+
+    from linkforge.llm.request_runtime import run_request
+
+    browser.open(_make_data_url("<title>model test</title>"))
+
+    async def operation(_progress):
+        await asyncio.sleep(0.01)
+        return "answer"
+
+    assert (
+        run_request(operation, should_stop=lambda: False, provider="test", model="test", messages=[])
+        == "answer"
+    )
+    assert browser.title() == "model test"
+
+
 def _create_browser(config: BrowserConfig) -> PlaywrightBrowser:
     """
     根据 BrowserConfig 创建 PlaywrightBrowser。

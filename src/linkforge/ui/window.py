@@ -385,8 +385,8 @@ class MainWindow(QMainWindow):
         }:
             return
         self._worker.request_stop()
-        self._set_state(RuntimeState.STOPPING, "正在停止；视频无需播放完成，清理浏览器后退出。")
-        self._append_log("正在停止；视频无需播放完成，正在等待任务响应并清理浏览器")
+        self._set_state(RuntimeState.STOPPING, "正在停止；取消模型等待并清理浏览器后退出。")
+        self._append_log("正在停止；正在取消模型等待，等待当前操作响应并清理浏览器")
 
     def _on_course_url_changed(self, course_url: str) -> None:
         self.course_url_edit.setText(course_url)

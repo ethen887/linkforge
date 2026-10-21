@@ -162,6 +162,244 @@ def _handler(browser, llm):
     return handler, detector
 
 
+def _with_draft_button(*, label="暂时保存", after_save="", multiple=False):
+    body = _html().replace('<a onclick="window.saved=true">Save</a>', f'<a id="draft-save">{label}</a>')
+    body = body.replace(
+        "window.saved = false;",
+        """
+        window.saved = false;
+        document.getElementById('draft-save').onclick = async () => {
+          const form = document.getElementById('submitForm');
+          await fetch(form.action, {method:'POST', body:new URLSearchParams(new FormData(form))});
+          window.saved = true;
+          AFTER_SAVE
+        };
+        """.replace("AFTER_SAVE", after_save),
+    )
+    if multiple:
+        start = body.index('<div class="questionLi" id="question1">')
+        end = body.index('<div class="questionLi" id="question2">')
+        body = (
+            body[:start]
+            + body[start:end]
+            .replace("单选题", "多选题")
+            .replace('role="radio"', 'role="checkbox"')
+            .replace('class="num_option"', 'class="num_option_dx"')
+            + body[end:]
+        )
+        body = body.replace(
+            "question.querySelectorAll('[role=radio]')",
+            "question.querySelectorAll('[role=radio],[role=checkbox]')",
+        )
+        body = body.replace(
+            "option.onclick = () => {",
+            """option.onclick = () => {
+              if (option.getAttribute('role') === 'checkbox') {
+                const marker = option.querySelector('.num_option_dx');
+                marker.classList.toggle('check_answer_dx');
+                option.setAttribute('aria-checked', String(marker.classList.contains('check_answer_dx')));
+                question.querySelector('input').value = [...question.querySelectorAll('.check_answer_dx')]
+                    .map(item => item.getAttribute('data')).join('');
+                return;
+              }
+            """,
+        )
+    return body
+
+
+@pytest.mark.parametrize("label", ["暂时保存", "Save", "保存答案"])
+def test_each_answer_is_saved_as_draft_before_next_model_call(label):
+    with PlaywrightBrowser(headless=True, timeout_ms=2_000) as browser:
+        requests = _open(browser, body=_with_draft_button(label=label))
+
+        def check_previous_save():
+            if llm.calls == 2:
+                assert len(requests) == 1
+                assert requests[0]["answer1"] == ["B"]
+                assert requests[0]["answer2"] == [""]
+
+        llm = StubLLM(on_call=check_previous_save)
+        handler, detector = _handler(browser, llm)
+        handler.answer_all()
+        browser._require_page().wait_for_function("window.saved")
+        assert llm.calls == 2
+        assert len(requests) == 2
+        assert all(fields["pyFlag"] == ["1"] for fields in requests)
+        assert requests[-1]["answer2"] == ["false"]
+        assert not detector.completed
+        assert not browser._require_page().locator("#workpop").is_visible()
+
+
+def test_each_multiselect_click_is_saved_and_model_is_not_called_again():
+    class MultipleLLM(StubLLM):
+        def call_model(self, model, messages, tools):
+            self.calls += 1
+            return LLMResponse(
+                json.dumps(
+                    {
+                        "question_type": "MULTIPLE_CHOICE" if self.calls == 1 else "TRUE_FALSE",
+                        "choices": ["A", "B"] if self.calls == 1 else ["B"],
+                    }
+                )
+            )
+
+    with PlaywrightBrowser(headless=True, timeout_ms=2_000) as browser:
+        requests = _open(browser, body=_with_draft_button(multiple=True))
+        llm = MultipleLLM()
+        handler, detector = _handler(browser, llm)
+        handler.answer_all()
+        assert llm.calls == 2
+        assert len(requests) == 3
+        assert [fields["answer1"] for fields in requests] == [["A"], ["AB"], ["AB"]]
+        assert all(fields["pyFlag"] == ["1"] for fields in requests)
+        assert not detector.completed
+
+
+def test_question_replaced_after_draft_save_is_reacquired_without_repeating_model():
+    after_save = (
+        "document.getElementById('question1').replaceWith("
+        "document.getElementById('question1').cloneNode(true));"
+    )
+    with PlaywrightBrowser(headless=True, timeout_ms=2_000) as browser:
+        requests = _open(browser, body=_with_draft_button(after_save=after_save))
+        llm = StubLLM()
+        handler, _ = _handler(browser, llm)
+        handler.answer_all()
+        assert len(requests) == 2
+        assert llm.calls == 2
+        assert requests[-1]["answer1"] == ["B"]
+
+
+def test_selection_lost_after_draft_save_stops_without_solving_next_question():
+    after_save = """
+      const question = document.getElementById('question1');
+      question.querySelectorAll('[role=radio]').forEach(option => {
+        option.setAttribute('aria-checked', 'false');
+        option.querySelector('.num_option').classList.remove('check_answer');
+      });
+      question.querySelector('input').value = '';
+    """
+    with PlaywrightBrowser(headless=True, timeout_ms=2_000) as browser:
+        requests = _open(browser, body=_with_draft_button(after_save=after_save))
+        llm = StubLLM()
+        handler, detector = _handler(browser, llm)
+        with pytest.raises(ChaoxingQuizStateError, match="暂存后"):
+            handler.answer_all()
+        assert llm.calls == 1
+        assert len(requests) == 1
+        assert not detector.completed
+
+
+def test_rejected_draft_response_stops_without_retry_or_next_model_request():
+    with PlaywrightBrowser(headless=True, timeout_ms=2_000) as browser:
+        _open(browser, body=_with_draft_button())
+        saves = []
+
+        def reject_save(route):
+            saves.append(route.request.post_data)
+            route.fulfill(json={"status": False, "msg": "PRIVATE-REJECTION"})
+
+        browser._require_page().route("**/mooc-ans/work/addStudentWorkNewWeb", reject_save)
+        llm = StubLLM()
+        handler, detector = _handler(browser, llm)
+        with pytest.raises(ChaoxingQuizStateError, match="暂存响应") as caught:
+            handler.answer_all()
+        assert llm.calls == 1
+        assert len(saves) == 1
+        assert "PRIVATE" not in str(caught.value)
+        assert not detector.completed
+
+
+def test_resume_with_new_handler_after_reload_skips_answer_saved_by_previous_run():
+    with PlaywrightBrowser(headless=True, timeout_ms=2_000) as browser:
+        requests = _open(browser, body=_with_draft_button())
+        first_llm = StubLLM()
+        first_handler, _ = _handler(browser, first_llm)
+        first_handler.run_interruptibly(should_stop=lambda: len(requests) >= 1)
+        assert first_llm.calls == 1
+        assert len(requests) == 1
+        assert requests[0]["answer1"] == ["B"]
+        assert requests[0]["answer2"] == [""]
+
+        # 模拟服务器将暂存答案带回新文档；重建处理器，不能依赖上次运行的内存。
+        body = (
+            _with_draft_button()
+            .replace('id="answer1" name="answer1" value=""', 'id="answer1" name="answer1" value="B"')
+            .replace(
+                '<span class="num_option" data="B">B</span>',
+                '<span class="num_option check_answer" data="B">B</span>',
+                1,
+            )
+        )
+        resumed_requests = _open(browser, body=body)
+
+        class RemainingQuestionLLM(StubLLM):
+            def call_model(self, model, messages, tools):
+                self.calls += 1
+                return LLMResponse('{"question_type":"TRUE_FALSE","choices":["B"]}')
+
+        resumed_llm = RemainingQuestionLLM()
+        resumed_handler, detector = _handler(browser, resumed_llm)
+        resumed_handler.answer_all()
+        assert resumed_llm.calls == 1
+        assert len(resumed_requests) == 1
+        assert resumed_requests[0]["answer1"] == ["B"]
+        assert resumed_requests[0]["answer2"] == ["false"]
+        assert not detector.completed
+
+
+def test_all_existing_answers_need_no_model_requests_and_still_require_real_submission():
+    with PlaywrightBrowser(headless=True, timeout_ms=2_000) as browser:
+        body = (
+            _html()
+            .replace('id="answer1" name="answer1" value=""', 'id="answer1" name="answer1" value="B"')
+            .replace('id="answer2" name="answer2" value=""', 'id="answer2" name="answer2" value="false"')
+            .replace(
+                '<span class="num_option" data="B">B</span>',
+                '<span class="num_option check_answer" data="B">B</span>',
+            )
+            .replace(
+                '<span class="num_option" data="false">B</span>',
+                '<span class="num_option check_answer" data="false">B</span>',
+            )
+        )
+        requests = _open(browser, body=body)
+        llm = StubLLM()
+        handler, detector = _handler(browser, llm)
+        handler.answer_all()
+        assert llm.calls == 0
+        assert requests == []
+        assert not detector.completed
+        handler.run()
+        assert llm.calls == 0
+        assert len(requests) == 1
+        assert requests[0]["pyFlag"] == [""]
+        assert detector.completed
+
+
+@pytest.mark.parametrize(
+    "button",
+    [
+        "",
+        '<a style="display:none">暂时保存</a>',
+        "<button disabled>暂时保存</button>",
+        "<a>暂时保存</a><a>暂时保存</a>",
+        '<a aria-label="提交作业">暂时保存</a>',
+    ],
+)
+def test_optional_or_ambiguous_save_controls_never_click_submit(button):
+    body = _html().replace('<a onclick="window.saved=true">Save</a>', button)
+    with PlaywrightBrowser(headless=True, timeout_ms=2_000) as browser:
+        requests = _open(browser, body=body)
+        llm = StubLLM()
+        handler, detector = _handler(browser, llm)
+        handler.answer_all()
+        assert llm.calls == 2
+        assert requests == []
+        assert not detector.completed
+        assert not browser._require_page().locator("#workpop").is_visible()
+
+
 @pytest.mark.parametrize("response", [False, 0, "true", None])
 def test_rejected_or_malformed_result_is_not_retried_or_marked_complete(response, caplog):
     with PlaywrightBrowser(headless=True, timeout_ms=2_000) as browser:

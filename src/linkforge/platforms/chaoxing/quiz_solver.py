@@ -7,7 +7,7 @@ import time
 from typing import Protocol
 
 from linkforge.llm.base import LLM, LLMMessage
-from linkforge.llm.errors import ModelRequestError, model_failure_reason
+from linkforge.llm.errors import ModelRequestCancelledError, ModelRequestError, model_failure_reason
 from linkforge.platforms.chaoxing.exceptions import ChaoxingQuizAnswerError, ChaoxingQuizSolverError
 from linkforge.platforms.chaoxing.quiz_models import (
     QuizAnswer,
@@ -152,14 +152,17 @@ class LLMQuizSolver:
             logger.info("Quiz model request: question=%d attempt=%d", question.index + 1, attempt)
             try:
                 response = self._llm.call_json_model(self._model, messages)
+            except ModelRequestCancelledError:
+                raise
             except Exception as exc:
                 logger.warning(
                     "Quiz model request failed: question=%d attempt=%d elapsed_seconds=%.3f "
-                    "exception_type=%s",
+                    "exception_type=%s reason=%s",
                     question.index + 1,
                     attempt,
                     time.monotonic() - started,
                     type(exc).__name__,
+                    model_failure_reason(exc),
                 )
                 # SDK 异常正文可能包含请求数据或凭据。
                 request_reason = model_failure_reason(exc)

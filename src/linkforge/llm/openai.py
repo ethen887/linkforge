@@ -1,12 +1,12 @@
 import json
 from typing import Any, cast
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from linkforge.llm.base import LLM, LLMMessage, LLMResponse, ToolCall
-from linkforge.llm.errors import ModelRequestError
+from linkforge.llm.errors import ModelRequestCancelledError, ModelRequestError
+from linkforge.llm.request_runtime import REQUEST_TIMEOUT_SECONDS, RequestProgress, run_request
 
-_MODEL_REQUEST_TIMEOUT_SECONDS = 120.0
 _JSON_OBJECT_ENDPOINTS = {
     "https://api.deepseek.com",
     "https://api.openai.com/v1",
@@ -21,9 +21,38 @@ class OpenAIInterface(LLM):
         self.client = OpenAI(
             api_key=api_key,
             base_url=base_url,
-            timeout=_MODEL_REQUEST_TIMEOUT_SECONDS,
+            timeout=REQUEST_TIMEOUT_SECONDS,
             max_retries=0,
         )
+
+    def close(self) -> None:
+        self.client.close()
+
+    async def _stream(self, progress: RequestProgress, options: dict[str, Any]) -> Any:
+        async with AsyncOpenAI(
+            api_key=self.client.api_key,
+            base_url=self.client.base_url,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+            max_retries=0,
+        ) as client:
+            async with client.chat.completions.stream(**options) as stream:
+                async for event in stream:
+                    if event.type == "chunk":
+                        chunk = event.chunk
+                        # 部分兼容服务会附加 reasoning_content，只统计字符数。
+                        for choice in chunk.choices:
+                            progress.chunk(
+                                content=choice.delta.content,
+                                reasoning=getattr(choice.delta, "reasoning_content", None),
+                            )
+                        if not chunk.choices:
+                            progress.chunk()
+                        if chunk.usage is not None:
+                            progress.usage(chunk.usage)
+                completion = await stream.get_final_completion()
+                if completion.usage is not None:
+                    progress.usage(completion.usage)
+                return completion
 
     def _convert_tool_calls(self, tool_calls: tuple[ToolCall, ...]) -> list[dict[str, Any]]:
         """将 LinkForge 的工具调用转换为 OpenAI 的函数工具调用格式。"""
@@ -118,13 +147,26 @@ class OpenAIInterface(LLM):
         json_object: bool = False,
     ) -> LLMResponse:
         openai_messages = [self._convert_message(message) for message in messages]
+        options = dict(
+            model=model,
+            messages=cast(Any, openai_messages),
+            **({"tools": cast(Any, tools)} if tools else {}),
+            **({"response_format": cast(Any, {"type": "json_object"})} if json_object else {}),
+        )
+        should_stop = getattr(self, "_should_stop", None)
         try:
-            messages_t = self.client.chat.completions.create(
-                model=model,
-                messages=cast(Any, openai_messages),
-                **({"tools": cast(Any, tools)} if tools else {}),
-                **({"response_format": cast(Any, {"type": "json_object"})} if json_object else {}),
-            )
+            if should_stop is not None:
+                messages_t = run_request(
+                    lambda progress: self._stream(progress, options),
+                    should_stop=should_stop,
+                    provider="openai-compatible",
+                    model=model,
+                    messages=messages,
+                )
+            else:
+                messages_t = self.client.chat.completions.create(**options)
+        except ModelRequestCancelledError:
+            raise
         except Exception as exc:
             raise ModelRequestError.from_exception(exc) from exc
 

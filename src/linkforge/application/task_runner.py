@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Protocol
 
 from linkforge.application.issues import RunIssue
+from linkforge.llm.errors import ModelRequestCancelledError
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,11 @@ class TaskRunner:
             logger.info("Dispatching task to %s handler", task_type.name)
             try:
                 handler.run_interruptibly(should_stop=should_stop)
+            except ModelRequestCancelledError:
+                if should_stop is None or not should_stop():
+                    raise
+                logger.info("Task runner stopped at task boundary")
+                return
             except TaskPageChangedError:
                 logger.info("Course page changed; detecting the selected content again")
                 continue
