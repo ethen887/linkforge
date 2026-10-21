@@ -116,6 +116,18 @@ class QuizDOMQuestion:
             raise ChaoxingQuizCaptureError(f"Question {self.index + 1}: screenshot failed.") from exc
         return QuizQuestion(self.index, self.hint, tuple(self.options), image)
 
+    def resumable_answer(self) -> QuizAnswer | None:
+        """复用状态一致的单选/判断答案；多选的非空状态可能只是逐次暂存的中间结果。"""
+        if self.hint not in (QuizQuestionType.SINGLE_CHOICE, QuizQuestionType.TRUE_FALSE):
+            return None
+        selected = self.selected(self.hint)
+        if not selected:
+            return None
+        answer = QuizAnswer(self.hint, tuple(letter for letter in self.options if letter in selected))
+        if answer.question_type is QuizQuestionType.TRUE_FALSE and tuple(self.options) != ("A", "B"):
+            raise ChaoxingQuizStateError("Saved true/false question has unsupported options.")
+        return answer
+
     def selected(self, question_type: QuizQuestionType) -> set[str]:
         states = self._option_states()
         if tuple(state["kind"] for state in states) != self.roles:
@@ -183,6 +195,8 @@ class QuizDOMQuestion:
         poll_interval_seconds: float,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
+        before_click: Callable[[], None] | None = None,
+        on_selection_changed: Callable[[frozenset[str]], None] | None = None,
     ) -> None:
         validate_answer(question, answer)
         multiple = answer.question_type is QuizQuestionType.MULTIPLE_CHOICE
@@ -209,9 +223,18 @@ class QuizDOMQuestion:
         if multiple:
             for letter in self.options:
                 if (letter in current) != (letter in target):
+                    if before_click is not None:
+                        before_click()
                     self.options[letter].click()
                     current.symmetric_difference_update({letter})
                     verify(current)
+                    if on_selection_changed is not None:
+                        on_selection_changed(frozenset(current))
         elif current != target:
+            if before_click is not None:
+                before_click()
             self.options[answer.choices[0]].click()
+            verify(target)
+            if on_selection_changed is not None:
+                on_selection_changed(frozenset(target))
         verify(target)

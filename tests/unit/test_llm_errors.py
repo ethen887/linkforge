@@ -23,6 +23,7 @@ class _ConnectionError(Exception):
     ("error", "expected"),
     [
         (_ProviderError(401), "API Key 无效"),
+        (_ProviderError(402), "余额不足"),
         (_ProviderError(429), "限流或额度不足"),
         (_ProviderError(404), "模型或接口地址不存在"),
         (_ProviderError(400), "不接受当前请求"),

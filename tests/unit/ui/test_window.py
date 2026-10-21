@@ -335,7 +335,7 @@ def test_stop_calls_application_stop_and_prevents_duplicate_start(
     assert window.state is RuntimeState.STOPPING
     assert fake.stop_called.wait(timeout=1)
     assert not window.stop_button.isEnabled()
-    assert "视频无需播放完成" in window.statusBar().currentMessage()
+    assert "取消模型等待" in window.statusBar().currentMessage()
     assert "当前任务完成后" not in window.log_edit.toPlainText()
 
     _wait_until(qt_application, lambda: window._thread is None)
@@ -363,6 +363,69 @@ def test_close_running_window_requests_safe_stop(qt_application: QApplication) -
     assert fake.stop_called.wait(timeout=1)
     _wait_until(qt_application, lambda: window._thread is None)
     _wait_until(qt_application, lambda: not window.isVisible())
+
+
+@pytest.mark.parametrize("action", ["stop", "close"])
+def test_gui_cancels_inflight_model_and_cleans_resources(qt_application, monkeypatch, action):
+    import asyncio
+    from types import SimpleNamespace
+
+    from linkforge.application.runtime import LinkForgeApplication
+    from linkforge.llm.base import LLMMessage
+    from linkforge.llm.openai import OpenAIInterface
+    from tests.fakes import FakeBrowser
+
+    monkeypatch.setattr(logging.getLogger("linkforge"), "level", logging.INFO)
+    started = threading.Event()
+    cleaned = threading.Event()
+    submitted = []
+    errors = []
+
+    async def slow_stream(self, progress, options):
+        started.set()
+        try:
+            await asyncio.sleep(300)
+        finally:
+            cleaned.set()
+
+    monkeypatch.setattr(OpenAIInterface, "_stream", slow_stream)
+
+    class Platform:
+        def prepare(self, **kwargs):
+            return True
+
+        def build_runner(self, *, browser, llm, model):
+            def run(**kwargs):
+                llm.call_json_model(model, [LLMMessage("user", "PRIVATE-QUESTION")])
+                submitted.append(True)
+
+            return SimpleNamespace(run=run)
+
+    browser = FakeBrowser()
+
+    def factory(config):
+        return LinkForgeApplication(config=config, platform=Platform(), browser_factory=lambda _: browser)
+
+    window = MainWindow(application_factory=factory, error_presenter=lambda *args: errors.append(args))
+    _fill_valid_form(window)
+    window.show()
+    window.start_button.click()
+    _wait_until(qt_application, started.is_set)
+    _wait_until(qt_application, lambda: window.state is RuntimeState.RUNNING)
+    if action == "close":
+        window.close()
+    else:
+        window.stop_button.click()
+    _wait_until(qt_application, lambda: window._thread is None, timeout=2)
+    assert cleaned.is_set()
+    assert not submitted
+    assert not errors
+    assert window.state is RuntimeState.FINISHED
+    if action == "stop":
+        text = window.log_edit.toPlainText()
+        assert "已取消，连接已关闭" in text
+        assert "PRIVATE" not in text
+        window.close()
 
 
 @pytest.mark.parametrize("outcome", ["stop", "close", "finish", "error"])

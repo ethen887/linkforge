@@ -859,7 +859,8 @@ class PlaywrightBrowser(Browser):
                 if not page.is_closed():
                     page.close()
             except Exception as exc:
-                errors.append(exc)
+                if not _is_already_closed_error(exc):
+                    errors.append(exc)
 
         context = self._context
         self._context = None
@@ -868,7 +869,8 @@ class PlaywrightBrowser(Browser):
             try:
                 context.close()
             except Exception as exc:
-                errors.append(exc)
+                if not _is_already_closed_error(exc):
+                    errors.append(exc)
 
         browser = self._browser
         self._browser = None
@@ -877,7 +879,8 @@ class PlaywrightBrowser(Browser):
             try:
                 browser.close()
             except Exception as exc:
-                errors.append(exc)
+                if not _is_already_closed_error(exc):
+                    errors.append(exc)
 
         playwright = self._playwright
         self._playwright = None
@@ -889,3 +892,8 @@ class PlaywrightBrowser(Browser):
                 errors.append(exc)
 
         return errors
+
+
+def _is_already_closed_error(exc: Exception) -> bool:
+    """窗口已由用户关闭时，重复关闭不算资源清理失败。"""
+    return isinstance(exc, PlaywrightError) and type(exc).__name__ == "TargetClosedError"

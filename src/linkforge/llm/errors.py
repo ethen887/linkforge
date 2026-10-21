@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 
+class ModelRequestCancelledError(Exception):
+    """用户取消了模型请求，不表示模型故障或任务完成。"""
+
+
 class ModelRequestError(RuntimeError):
     """模型服务商请求失败，携带安全的中文错误说明。"""
 
@@ -33,6 +37,8 @@ def model_failure_reason(exc: Exception) -> str:
 
     if status in {401, 403} or "authentication" in name or "permission" in name:
         return "API Key 无效、权限不足，或当前账号无权使用所选模型。"
+    if status == 402:
+        return "模型账户余额不足或需要付费，请检查账户余额和计费状态。"
     if status == 429 or "ratelimit" in name or "rate_limit" in name:
         return "模型服务触发限流或额度不足，请稍后重试并检查账户额度。"
     if status == 404 or "notfound" in name or "not_found" in name:

@@ -21,7 +21,7 @@ from linkforge.browser.exceptions import (
 )
 from linkforge.browser.models import BrowserPage
 from linkforge.llm.base import LLM, LLMMessage
-from linkforge.llm.errors import ModelRequestError, model_failure_reason
+from linkforge.llm.errors import ModelRequestCancelledError, ModelRequestError, model_failure_reason
 from linkforge.platforms.chaoxing.comment_state import (
     COMMENT_MODULE_PATH,
     CommentIdentity,
@@ -94,6 +94,8 @@ class LLMCommentBodyGenerator:
         ]
         try:
             response = self._llm.call_model(self._model, messages, [])
+        except ModelRequestCancelledError:
+            raise
         except Exception as exc:
             reason = model_failure_reason(exc)
             raise ChaoxingCommentGenerationError(f"讨论内容生成失败：{reason}") from ModelRequestError(
@@ -149,6 +151,9 @@ class ChaoxingCommentTaskHandler(TaskHandler):
         _LOGGER.info("Comment handler started")
         try:
             self._run()
+        except ModelRequestCancelledError:
+            _LOGGER.info("Comment handler stopped")
+            raise
         except BaseException:
             _LOGGER.error("Comment handler failed")
             raise

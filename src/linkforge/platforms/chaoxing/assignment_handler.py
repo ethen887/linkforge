@@ -20,7 +20,8 @@ from linkforge.platforms.chaoxing.exceptions import (
     ChaoxingQuizStateError,
     ChaoxingQuizSubmissionError,
 )
-from linkforge.platforms.chaoxing.quiz_handler import ChaoxingQuizTaskHandler
+from linkforge.platforms.chaoxing.quiz_draft import DRAFT_CONTROL_SELECTOR
+from linkforge.platforms.chaoxing.quiz_handler import ChaoxingQuizTaskHandler, _QuizDraftClickedError
 from linkforge.platforms.chaoxing.quiz_submitter import _CONTROL_SELECTOR, ChaoxingQuizSubmitter
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,46 @@ class StandaloneAssignmentHandler(ChaoxingQuizTaskHandler):
         if self._browser.current_url() != module_url:
             raise ChaoxingQuizStateError("Standalone assignment changed while answering.")
         return self._browser.page_element_scope(ASSIGNMENT_QUESTION_SELECTOR)
+
+    def _draft_scope(self, module_url: str) -> AbstractContextManager[tuple[BrowserElement, ...]]:
+        if self._browser.current_url() != module_url:
+            raise ChaoxingQuizStateError("Standalone assignment changed before draft save.")
+        return self._browser.page_element_scope(DRAFT_CONTROL_SELECTOR)
+
+    def _save_after_click(
+        self, content_url: str, module_url: str, index: int, selected: frozenset[str]
+    ) -> None:
+        if self._form_fields is None:
+            raise ChaoxingQuizStateError("Assignment form identity has not been verified before saving.")
+        # 保存和提交共享端点，但 pyFlag 不同；仅被动观察普通 UI 产生的保存响应。
+        with self._browser.capture_json_responses(
+            ASSIGNMENT_SUBMIT_PATH, form_fields={"pyFlag": "1", **self._form_fields}
+        ) as responses:
+            try:
+                super()._save_after_click(content_url, module_url, index, selected)
+            except _QuizDraftClickedError:
+                self._wait_for_draft_receipt(module_url, responses)
+                raise
+
+    def _wait_for_draft_receipt(self, module_url: str, responses: list[BrowserJSONResponse]) -> None:
+        deadline = self._monotonic() + min(3.0, self._config.completion_timeout_seconds)
+        while True:
+            self._check_stop()
+            if responses:
+                try:
+                    self._submission_confirmed(responses)
+                except (ChaoxingQuizCompletionError, ChaoxingQuizSubmissionError) as exc:
+                    raise ChaoxingQuizStateError(
+                        "暂存响应未通过校验，已停止作答，请检查保存结果。"
+                    ) from exc
+                logger.info("作业暂存响应已确认")
+                return
+            if self._monotonic() >= deadline:
+                logger.warning("已点击作业暂存，但未收到保存确认，请检查页面上的保存状态")
+                return
+            # 浏览器操作驱动同步 Playwright 的事件分发，让响应监听器收到结果。
+            self._with_questions(module_url, lambda _elements: None)
+            self._sleep(self._config.poll_interval_seconds)
 
     def _prepare_pending_quiz(self, content_url: str, module_url: str) -> None:
         # 独立作业已直接展示题目，没有章节入口需要点击。
