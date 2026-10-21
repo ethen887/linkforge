@@ -1,6 +1,6 @@
 """与浏览器无关的数据模型。"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 type InteractiveElementRole = Literal["link", "button", "textbox"]
@@ -21,3 +21,11 @@ class BrowserPage:
 
     page_id: int
     url: str
+
+
+@dataclass(frozen=True, slots=True)
+class BrowserJSONResponse:
+    """正常页面操作产生的 JSON 响应；正文不参与对象的诊断输出。"""
+
+    status: int
+    data: object = field(repr=False)

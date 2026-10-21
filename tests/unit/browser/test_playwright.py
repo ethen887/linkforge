@@ -262,3 +262,25 @@ def test_open_still_propagates_navigation_timeout_without_retry():
     with pytest.raises(BrowserTimeoutError):
         browser.open_for_readiness("https://example.test/course")
     assert calls == [("https://example.test/course", {"timeout": 1_000, "wait_until": "domcontentloaded"})]
+
+
+@pytest.mark.parametrize("already_closed", [True, False])
+def test_cleanup_ignores_only_already_closed_targets_and_still_stops_runtime(monkeypatch, already_closed):
+    _, _, context, runtime = _fake_runtime(monkeypatch)
+    browser = PlaywrightBrowser(profile_dir="profile-dir")
+    browser.start()
+
+    class TargetClosedError(PlaywrightError):
+        pass
+
+    def fail_close():
+        raise TargetClosedError("already closed") if already_closed else PlaywrightError("real failure")
+
+    context.close = fail_close
+    if already_closed:
+        browser.close()
+    else:
+        with pytest.raises(BrowserError, match="cleanup completed"):
+            browser.close()
+    assert runtime.stop_calls == 1
+    browser.close()

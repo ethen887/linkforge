@@ -1,4 +1,5 @@
 import base64
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -65,6 +66,13 @@ class LLMResponse:
 
 class LLM:
     """模型客户端的抽象基类，定义对话调用与 JSON 调用接口。"""
+
+    def configure_runtime(self, *, should_stop: Callable[[], bool]) -> None:
+        """接入应用的协作停止；网络适配器据此启用可取消请求。"""
+        self._should_stop = should_stop
+
+    def close(self) -> None:
+        """释放模型客户端资源；无资源的测试替身无需实现。"""
 
     def call_json_model(self, model: str, messages: list[LLMMessage]) -> LLMResponse:
         """请求 JSON 输出；在适配器确认支持时，可能会约束输出格式。"""

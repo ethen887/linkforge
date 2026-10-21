@@ -20,7 +20,9 @@ def data_url(html, route):
     return f"data:text/html;charset=utf-8,{quote(html, safe='')}#{route}"
 
 
-def fixture_page(*, inert=False, duplicate=False, marker_contract=False, unknown_heading=False):
+def fixture_page(
+    *, inert=False, duplicate=False, marker_contract=False, unknown_heading=False, draft=False
+):
     # Mirrors the observed role=radio + initially absent aria-checked contract.
     # Native inputs nested in checkbox role wrappers exercise de-duplication.
     html = """
@@ -91,6 +93,9 @@ def fixture_page(*, inert=False, duplicate=False, marker_contract=False, unknown
     )
     if unknown_heading:
         html = html.replace("3. (判断题)", "3. (unreadable)")
+    if draft:
+        html += """<button onclick="window.saves.push(window.clicks.length)">暂时保存</button>
+            <script>window.saves = [];</script>"""
     question_url = data_url(html, QUESTION_FRAME_PATH)
     work_html = (
         f'<iframe style="width:800px;height:1200px" src="{escape(question_url, quote=True)}"></iframe>'
@@ -125,7 +130,7 @@ def test_real_nested_frames_capture_select_and_repeat_without_toggle():
         handler = ChaoxingQuizTaskHandler(browser, solver=SimpleNamespace(solve=solve))
         assert handler.answer_all() == tuple(answers)
         assert handler.answer_all() == tuple(answers)
-        assert seen == [0, 1, 2, 0, 1, 2]
+        assert seen == [0, 1, 1]
         assert [[0, 1], [1, 1], [1, 2]] in browser.evaluate_in_frames("() => window.clicks || null")
         with browser.element_scope(
             QUESTION_FRAME_PATH, QUESTION_SELECTOR, ancestor_url=module_url
@@ -133,6 +138,27 @@ def test_real_nested_frames_capture_select_and_repeat_without_toggle():
             held = elements[0]
         with pytest.raises(BrowserError, match="closed"):
             held.screenshot()
+
+
+def test_chapter_quiz_saves_after_each_option_change_in_the_question_frame():
+    url, _ = fixture_page(draft=True)
+    answers = [
+        QuizAnswer(QuizQuestionType.SINGLE_CHOICE, ("B",)),
+        QuizAnswer(QuizQuestionType.MULTIPLE_CHOICE, ("A", "C")),
+        QuizAnswer(QuizQuestionType.TRUE_FALSE, ("B",)),
+    ]
+    seen = []
+
+    def solve(question):
+        seen.append(question.index)
+        return answers[question.index]
+
+    with PlaywrightBrowser(headless=True, timeout_ms=3_000) as browser:
+        browser.open(url)
+        handler = ChaoxingQuizTaskHandler(browser, solver=SimpleNamespace(solve=solve))
+        assert handler.answer_all() == tuple(answers)
+        assert seen == [0, 1]
+        assert [1, 2, 3] in browser.evaluate_in_frames("() => window.saves || null")
 
 
 @pytest.mark.parametrize("failure", ["inert", "duplicate"])

@@ -87,7 +87,7 @@ class RuntimeWorker(QObject):
             self.finished.emit()
 
     def request_stop(self) -> None:
-        """请求应用停止；视频轮询期间即可响应。"""
+        """请求应用停止；模型等待和视频轮询期间均可响应。"""
         with self._lock:
             self._stop_requested = True
             application = self._application
@@ -137,18 +137,46 @@ def _safe_error_summary(summary: str, api_key: str) -> str:
 
 def _user_message(record: logging.LogRecord) -> str | None:
     message = record.getMessage()
+    if record.name == "linkforge.platforms.chaoxing.quiz_draft":
+        return message if message == "暂存按钮不唯一或暂不可用，已跳过本次暂存点击" else None
+    if record.name == "linkforge.platforms.chaoxing.quiz_handler" and record.msg in {
+        "第 %d 题：已点击暂时保存，正在重新核验选项",
+        "第 %d 题：检测到已有答案，保留选项并跳过模型请求",
+    }:
+        return message
+    if record.name == "linkforge.llm.request_runtime":
+        # 该模块只输出本地标识、固定文案及数值统计。
+        return message if message.startswith("模型请求 ") else None
+    if record.name == "linkforge.platforms.chaoxing.quiz_solver":
+        if record.msg == "Quiz model request: question=%d attempt=%d" and isinstance(record.args, tuple):
+            question, attempt = record.args
+            if type(question) is int and type(attempt) is int:
+                return f"正在请求第 {question} 题答案（第 {attempt} 次尝试）"
+        return None
     if record.name == "linkforge.platforms.chaoxing.recovery":
         return message if message.startswith("课程问题：") else None
     if record.name == "linkforge.platforms.chaoxing.navigation":
         if message == "Following the selected Chaoxing course page":
             return "检测到课程页面切换，正在跟随当前选择的内容"
         return None
+    if record.name == "linkforge.platforms.chaoxing.assignment_handler":
+        return {
+            "作业暂存响应已确认": "作业暂存响应已确认",
+            "已点击作业暂存，但未收到保存确认，请检查页面上的保存状态": (
+                "已点击作业暂存，但未收到保存确认，请检查页面上的保存状态"
+            ),
+            "Standalone assignment answers verified; submitting through normal UI": (
+                "独立作业选项已核验，正在提交"
+            ),
+            "Standalone assignment submission confirmed": "当前独立作业提交已确认",
+        }.get(message)
     if record.name == "linkforge.platforms.chaoxing.startup":
         return {
             "Chaoxing manual login required": "等待登录：请在浏览器中完成学习通登录，进入课程后将自动继续",
             "Waiting for Chaoxing course page": "正在等待课程页面加载",
             "Returning to requested Chaoxing course after login": "登录页面已退出，正在返回课程页面",
             "Chaoxing course page ready": "课程页面已就绪，开始课程任务",
+            "Chaoxing standalone assignment page ready": "独立作业页面已就绪，开始检查作业状态",
             "Chaoxing startup wait stopped": "已停止登录等待",
             "Chaoxing startup readiness timed out": "登录或课程页面加载超时，请检查浏览器页面后重试",
         }.get(message)
@@ -160,6 +188,7 @@ def _user_message(record: logging.LogRecord) -> str | None:
             "Platform runtime completed": "课程工作流已结束",
             "Application cleanup finished": "浏览器资源已清理",
             "Application stop requested": "已请求安全停止",
+            "Application model request cancelled": "模型请求已取消",
         }.get(message)
 
     if record.name == "linkforge.application.task_runner":
@@ -170,7 +199,7 @@ def _user_message(record: logging.LogRecord) -> str | None:
         if message == "Task runner stopped at task boundary":
             return "已在安全任务边界停止"
         if message == "Task runner reached COMPLETE":
-            return "课程任务已完成"
+            return "当前任务流程已完成"
 
     for module_suffix, display_name in _HANDLER_NAMES.items():
         if record.name.endswith(module_suffix):
@@ -178,6 +207,8 @@ def _user_message(record: logging.LogRecord) -> str | None:
                 return "视频播放暂时停滞，已尝试暂停后继续播放"
             if message == "Video handler stopped":
                 return "视频任务已停止，未完成的视频保留待续播"
+            if message == "Quiz handler stopped":
+                return "测验处理已停止，未继续作答或提交"
             if message.endswith("handler started"):
                 return f"{display_name}开始"
             if message.endswith("handler completed"):

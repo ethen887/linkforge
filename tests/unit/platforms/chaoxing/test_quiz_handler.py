@@ -172,6 +172,54 @@ def test_questions_capture_solve_select_sequentially_and_mapping_is_local():
     assert two["selected"] == {"A"}
 
 
+@pytest.mark.parametrize("kind,count", [(Q.SINGLE_CHOICE, 4), (Q.TRUE_FALSE, 2)])
+def test_new_handler_preserves_existing_radio_answer_without_capture_or_model(kind, count, caplog):
+    import logging
+
+    events = []
+    element, state = make_question(kind, selected=("B",), count=count, events=events)
+    handler, _, _, questions = make_handler([element], [])
+    with caplog.at_level(logging.INFO):
+        assert handler.answer_all() == (QuizAnswer(kind, ("B",)),)
+    assert questions == []
+    assert events == []
+    assert state["selected"] == {"B"}
+    assert "第 1 题：检测到已有答案" in caplog.text
+
+
+def test_resume_only_calls_model_for_gaps_between_existing_answers():
+    events = []
+    first, _ = make_question(selected=("C",), name="q1", events=events)
+    second, _ = make_question(name="q2", events=events)
+    third, _ = make_question(Q.TRUE_FALSE, selected=("B",), count=2, name="q3", events=events)
+    answers = [
+        QuizAnswer(Q.SINGLE_CHOICE, ("C",)),
+        QuizAnswer(Q.SINGLE_CHOICE, ("A",)),
+        QuizAnswer(Q.TRUE_FALSE, ("B",)),
+    ]
+    handler, _, _, questions = make_handler([first, second, third], answers, events=events)
+    assert handler.answer_all() == tuple(answers)
+    assert [question.index for question in questions] == [1]
+    assert events == ["capture:q2", "solve:q2", "click:q2:A"]
+
+
+def test_partially_saved_multiselect_still_uses_model_to_finish_missing_choices():
+    element, state = make_question(Q.MULTIPLE_CHOICE, selected=("A",))
+    handler, _, _, questions = make_handler([element], [QuizAnswer(Q.MULTIPLE_CHOICE, ("A", "C"))])
+    handler.answer_all()
+    assert len(questions) == 1
+    assert state["selected"] == {"A", "C"}
+
+
+def test_unidentified_radio_question_still_uses_model_even_when_selected():
+    element, _ = make_question(selected=("A",))
+    original_inspect = element.inspect
+    element.inspect = lambda: {**original_inspect(), "title": "Unidentified question"}
+    handler, _, _, questions = make_handler([element], [QuizAnswer(Q.SINGLE_CHOICE, ("A",))])
+    handler.answer_all()
+    assert len(questions) == 1
+
+
 def test_model_call_releases_scope_and_reacquires_replaced_question():
     old_element, old_state = make_question()
     fresh_element, fresh_state = make_question()
@@ -190,8 +238,63 @@ def test_model_call_releases_scope_and_reacquires_replaced_question():
 
     assert old_state["selected"] == set()
     assert fresh_state["selected"] == {"B"}
-    scope_calls = [call for call in browser.action_calls if call[0] == "element_scope"]
+    scope_calls = [
+        call for call in browser.action_calls if call[0] == "element_scope" and call[2] == ".TiMu.newTiMu"
+    ]
     assert len(scope_calls) == 5
+
+
+def test_each_checkbox_change_is_saved_once_without_repeating_model_request():
+    events = []
+    element, state = make_question(Q.MULTIPLE_CHOICE, ("A", "B"), events=events)
+    handler, _, _, questions = make_handler(
+        [element], [QuizAnswer(Q.MULTIPLE_CHOICE, ("A", "C"))], events=events
+    )
+    button = FakeDOMElement(
+        inspect=lambda: dict(draft=True, visible=True, enabled=True), events=events, name="save"
+    )
+
+    @contextmanager
+    def draft_scope(_module_url):
+        yield (button,)
+
+    handler._draft_scope = draft_scope
+    handler.answer_all()
+    assert state["selected"] == {"A", "C"}
+    assert len(questions) == 1
+    assert events == ["capture:q1", "solve:q1", "click:q1:B", "click:save", "click:q1:C", "click:save"]
+
+
+def test_stop_after_save_does_not_solve_next_question_or_submit():
+    events = []
+    first, _ = make_question(events=events)
+    second, second_state = make_question(name="q2", events=events)
+    handler, _, module, questions = make_handler(
+        [first, second], [QuizAnswer(Q.SINGLE_CHOICE, ("A",)), QuizAnswer(Q.SINGLE_CHOICE, ("B",))]
+    )
+    stopped = False
+
+    def stop_after_save():
+        nonlocal stopped
+        stopped = True
+
+    button = FakeDOMElement(
+        inspect=lambda: dict(draft=True, visible=True, enabled=True),
+        on_click=stop_after_save,
+        events=events,
+        name="save",
+    )
+
+    @contextmanager
+    def draft_scope(_module_url):
+        yield (button,)
+
+    handler._draft_scope = draft_scope
+    handler.run_interruptibly(should_stop=lambda: stopped)
+    assert len(questions) == 1
+    assert second_state["selected"] == set()
+    assert not module["finished"]
+    assert events[-1] == "click:save"
 
 
 def test_handler_waits_for_question_count_to_stabilize_before_model_calls():
@@ -349,6 +452,25 @@ def test_invalid_custom_solver_answer_is_validated_before_click():
     with pytest.raises(ChaoxingQuizAnswerError, match="unknown option"):
         handler.answer_all()
     assert events == ["capture:q1"]
+
+
+def test_cancelled_model_request_never_selects_or_submits():
+    from linkforge.llm.errors import ModelRequestCancelledError
+
+    events = []
+    element, _ = make_question(events=events)
+    handler, _, module, _ = make_handler([element], [])
+    stopped = False
+
+    def cancel(_question):
+        nonlocal stopped
+        stopped = True
+        raise ModelRequestCancelledError
+
+    handler._solver = SimpleNamespace(solve=cancel)
+    handler.run_interruptibly(should_stop=lambda: stopped)
+    assert events == ["capture:q1"]
+    assert not module["finished"]
 
 
 def test_multiple_existing_radio_answers_fail_before_click():

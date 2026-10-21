@@ -1,12 +1,11 @@
 from typing import Any, cast
 
-from anthropic import Anthropic
+from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import MessageParam, TextBlock, ToolParam, ToolUseBlock
 
 from linkforge.llm.base import LLM, LLMMessage, LLMResponse, ToolCall
-from linkforge.llm.errors import ModelRequestError
-
-_MODEL_REQUEST_TIMEOUT_SECONDS = 120.0
+from linkforge.llm.errors import ModelRequestCancelledError, ModelRequestError
+from linkforge.llm.request_runtime import REQUEST_TIMEOUT_SECONDS, RequestProgress, run_request
 
 
 class AnthropicInterface(LLM):
@@ -14,9 +13,33 @@ class AnthropicInterface(LLM):
         self.client = Anthropic(
             api_key=api_key,
             base_url=base_url,
-            timeout=_MODEL_REQUEST_TIMEOUT_SECONDS,
+            timeout=REQUEST_TIMEOUT_SECONDS,
             max_retries=0,
         )
+
+    def close(self) -> None:
+        self.client.close()
+
+    async def _stream(self, progress: RequestProgress, options: dict[str, Any]) -> Any:
+        async with AsyncAnthropic(
+            api_key=self.client.api_key,
+            base_url=self.client.base_url,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+            max_retries=0,
+        ) as client:
+            async with client.messages.stream(**options) as stream:
+                async for event in stream:
+                    if event.type == "content_block_delta":
+                        progress.chunk(
+                            content=getattr(event.delta, "text", None),
+                            reasoning=getattr(event.delta, "thinking", None),
+                        )
+                    elif event.type == "message_start":
+                        progress.chunk()
+                        progress.usage(event.message.usage)
+                message = await stream.get_final_message()
+                progress.usage(message.usage)
+                return message
 
     def _convert_tool_calls(self, tool_calls: tuple[ToolCall, ...]) -> list[dict[str, Any]]:
         """将 LinkForge 的工具调用转换为 Anthropic 的 tool-use 数据块。"""
@@ -160,23 +183,28 @@ class AnthropicInterface(LLM):
             anthropic_messages.append(cast(MessageParam, converted_message))
 
         anthropic_tools = self._convert_tools(tools)
-
+        options: dict[str, Any] = dict(
+            model=model,
+            max_tokens=1024,
+            messages=anthropic_messages,
+            tools=anthropic_tools,
+        )
+        if system_prompt:
+            options["system"] = system_prompt
+        should_stop = getattr(self, "_should_stop", None)
         try:
-            if system_prompt:
-                message_t = self.client.messages.create(
+            if should_stop is not None:
+                message_t = run_request(
+                    lambda progress: self._stream(progress, options),
+                    should_stop=should_stop,
+                    provider="anthropic",
                     model=model,
-                    max_tokens=1024,
-                    system=system_prompt,
-                    messages=anthropic_messages,
-                    tools=anthropic_tools,
+                    messages=messages,
                 )
             else:
-                message_t = self.client.messages.create(
-                    model=model,
-                    max_tokens=1024,
-                    messages=anthropic_messages,
-                    tools=anthropic_tools,
-                )
+                message_t = self.client.messages.create(**options)
+        except ModelRequestCancelledError:
+            raise
         except Exception as exc:
             raise ModelRequestError.from_exception(exc) from exc
 

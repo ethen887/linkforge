@@ -9,6 +9,8 @@ from math import isfinite
 
 from linkforge.browser.base import Browser
 from linkforge.browser.exceptions import BrowserClosedError, BrowserError
+from linkforge.platforms.chaoxing.assignment_page import assignment_identity, inspect_assignment_page
+from linkforge.platforms.chaoxing.exceptions import ChaoxingQuizStateError
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +81,10 @@ class ChaoxingStartupWait:
                 logger.info("Chaoxing startup wait stopped")
                 return False
             if course_ready and not login_page:
-                logger.info("Chaoxing course page ready")
+                if assignment_identity(browser.current_url()) is not None:
+                    logger.info("Chaoxing standalone assignment page ready")
+                else:
+                    logger.info("Chaoxing course page ready")
                 return True
             now = self._monotonic()
             if login_page and not login_seen:
@@ -112,10 +117,19 @@ class ChaoxingStartupWait:
     @staticmethod
     def _probe(browser: Browser) -> tuple[bool, bool, bool]:
         try:
+            if assignment_identity(browser.current_url()) is not None:
+                state = inspect_assignment_page(browser)
+                logger.debug(
+                    "Chaoxing standalone assignment readiness: ready=%s submitted=%s question_count=%d",
+                    state.ready,
+                    state.submitted,
+                    state.question_count,
+                )
+                return False, state.ready or state.submitted, False
             results = browser.evaluate_in_frames(CHAOXING_STARTUP_SCRIPT)
         except BrowserClosedError:
             raise
-        except BrowserError as exc:
+        except (BrowserError, ChaoxingQuizStateError) as exc:
             # 导航可能替换 frame 或其执行上下文。
             logger.debug("Chaoxing startup probe temporarily unavailable (%s)", type(exc).__name__)
             return False, False, False

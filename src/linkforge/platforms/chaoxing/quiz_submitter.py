@@ -3,7 +3,7 @@
 import logging
 import time
 from collections.abc import Callable
-from contextlib import ExitStack
+from contextlib import AbstractContextManager, ExitStack
 from dataclasses import dataclass
 from math import isfinite
 
@@ -13,7 +13,7 @@ from linkforge.browser.exceptions import BrowserError
 from linkforge.platforms.chaoxing.exceptions import ChaoxingQuizSubmissionError
 from linkforge.platforms.chaoxing.quiz_dom import QUESTION_FRAME_PATH
 
-_CONTROL_SELECTOR = 'button, input[type="button"], input[type="submit"], [role="button"]'
+_CONTROL_SELECTOR = 'button, input[type="button"], input[type="submit"], [role="button"], a.completeBtn'
 _TOP_CONFIRM_SELECTOR = "#workpop #popok"
 logger = logging.getLogger(__name__)
 _CONTROL_STATE_EXPRESSION = r"""element => {
@@ -107,15 +107,23 @@ class ChaoxingQuizSubmitter:
         self._click_unique_submit(browser, module_url=module_url)
         self._click_unique_confirmation(browser, module_url=module_url)
 
+    def _control_scope(
+        self, browser: Browser, module_url: str
+    ) -> AbstractContextManager[tuple[BrowserElement, ...]]:
+        return browser.element_scope(QUESTION_FRAME_PATH, _CONTROL_SELECTOR, ancestor_url=module_url)
+
+    def _top_controls(self, browser: Browser) -> AbstractContextManager[tuple[BrowserElement, ...]]:
+        return browser.page_element_scope(_TOP_CONFIRM_SELECTOR)
+
+    def _before_click(self) -> None:
+        """允许适配器在实际点击前响应协作停止。"""
+
     def _click_unique_submit(self, browser: Browser, *, module_url: str) -> None:
         try:
-            with browser.element_scope(
-                QUESTION_FRAME_PATH,
-                _CONTROL_SELECTOR,
-                ancestor_url=module_url,
-            ) as elements:
+            with self._control_scope(browser, module_url) as elements:
                 controls = tuple(self._inspect(element, phase="submit") for element in elements)
                 target = _unique_best(controls, _submit_score, phase="submit")
+                self._before_click()
                 target.element.click()
         except ChaoxingQuizSubmissionError:
             raise
@@ -129,14 +137,8 @@ class ChaoxingQuizSubmitter:
             deadline = self._monotonic() + self._confirmation_timeout
             while True:
                 with ExitStack() as stack:
-                    local = stack.enter_context(
-                        browser.element_scope(
-                            QUESTION_FRAME_PATH,
-                            _CONTROL_SELECTOR,
-                            ancestor_url=module_url,
-                        )
-                    )
-                    top = stack.enter_context(browser.page_element_scope(_TOP_CONFIRM_SELECTOR))
+                    local = stack.enter_context(self._control_scope(browser, module_url))
+                    top = stack.enter_context(self._top_controls(browser))
                     controls = tuple(self._inspect(e, phase="confirmation") for e in (*local, *top))
                     if any(c.visible and c.unfinished_warning for c in controls):
                         logger.debug("Chaoxing quiz confirmation blocked: reason=unfinished_questions")
@@ -145,6 +147,7 @@ class ChaoxingQuizSubmitter:
                         )
                     if any(_confirmation_score(c) > 0 for c in controls):
                         target = _unique_best(controls, _confirmation_score, phase="confirmation")
+                        self._before_click()
                         target.element.click()
                         return
                     logger.debug(

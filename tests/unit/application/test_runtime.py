@@ -270,6 +270,33 @@ def test_stop_inside_active_task_returns_normally_and_closes_browser() -> None:
     assert events.count("browser.close") == 1
 
 
+@pytest.mark.parametrize("failure", [False, True])
+def test_model_receives_stop_callback_and_is_closed_on_exit(failure):
+    events = []
+
+    class ManagedLLM(FakeLLM):
+        def close(self):
+            events.append("llm.close")
+
+    llm = ManagedLLM()
+    runner = RecordingTaskRunner(events, run_error=RuntimeError("failed") if failure else None)
+    application = _application(
+        events=events,
+        browser=RecordingBrowser(events),
+        llm=llm,
+        platform=RecordingPlatformRuntime(events, runner),
+    )
+    if failure:
+        with pytest.raises(RuntimeError, match="failed"):
+            application.run()
+    else:
+        application.run()
+    assert not llm._should_stop()
+    application.stop()
+    assert llm._should_stop()
+    assert events[-2:] == ["browser.close", "llm.close"]
+
+
 @pytest.mark.parametrize("course_url", ["", " ", "\t"])
 def test_application_config_rejects_empty_course_url(course_url: str) -> None:
     with pytest.raises(ValueError, match="course_url must not be empty"):

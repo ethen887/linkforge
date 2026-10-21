@@ -32,8 +32,10 @@ LinkForge Playwright 浏览器实现。
 
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
+from collections.abc import Iterator, Mapping
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import (
     Browser as PlaywrightNativeBrowser,
@@ -43,6 +45,7 @@ from playwright.sync_api import (
     ElementHandle,
     Page,
     Playwright,
+    Response,
     sync_playwright,
 )
 from playwright.sync_api import (
@@ -62,7 +65,7 @@ from .exceptions import (
     BrowserStartError,
     BrowserTimeoutError,
 )
-from .models import BrowserPage, InteractiveElement, InteractiveElementRole
+from .models import BrowserJSONResponse, BrowserPage, InteractiveElement, InteractiveElementRole
 from .playwright_element import element_scope
 
 _INTERACTIVE_ELEMENT_SELECTOR = (
@@ -393,6 +396,44 @@ class PlaywrightBrowser(Browser):
     def page_element_scope(self, selector: str) -> AbstractContextManager[tuple[BrowserElement, ...]]:
         page = self._require_page()
         return element_scope(page, page.url, selector, ancestor_url=page.url, include_ancestor=True)
+
+    @contextmanager
+    def capture_json_responses(
+        self, path: str, *, method: str = "POST", form_fields: Mapping[str, str] | None = None
+    ) -> Iterator[list[BrowserJSONResponse]]:
+        """仅监听当前主 frame 的同源指定路径，不读取或记录请求凭据。"""
+        page = self._require_page()
+        origin = urlsplit(page.url)
+        responses: list[BrowserJSONResponse] = []
+
+        def collect(response: Response) -> None:
+            url = urlsplit(response.url)
+            try:
+                if (
+                    url.scheme != origin.scheme
+                    or url.netloc != origin.netloc
+                    or url.path != path
+                    or response.request.method != method
+                    or response.request.frame != page.main_frame
+                ):
+                    return
+                if form_fields is not None:
+                    fields = parse_qs(response.request.post_data or "", keep_blank_values=True)
+                    if any(fields.get(key, [""]) != [value] for key, value in form_fields.items()):
+                        return
+                try:
+                    data: object = response.json()
+                except (PlaywrightError, ValueError):
+                    data = None
+                responses.append(BrowserJSONResponse(response.status, data))
+            except PlaywrightError:
+                responses.append(BrowserJSONResponse(0, None))
+
+        page.on("response", collect)
+        try:
+            yield responses
+        finally:
+            page.remove_listener("response", collect)
 
     def open_new_page_from_frame(
         self,
@@ -818,7 +859,8 @@ class PlaywrightBrowser(Browser):
                 if not page.is_closed():
                     page.close()
             except Exception as exc:
-                errors.append(exc)
+                if not _is_already_closed_error(exc):
+                    errors.append(exc)
 
         context = self._context
         self._context = None
@@ -827,7 +869,8 @@ class PlaywrightBrowser(Browser):
             try:
                 context.close()
             except Exception as exc:
-                errors.append(exc)
+                if not _is_already_closed_error(exc):
+                    errors.append(exc)
 
         browser = self._browser
         self._browser = None
@@ -836,7 +879,8 @@ class PlaywrightBrowser(Browser):
             try:
                 browser.close()
             except Exception as exc:
-                errors.append(exc)
+                if not _is_already_closed_error(exc):
+                    errors.append(exc)
 
         playwright = self._playwright
         self._playwright = None
@@ -848,3 +892,8 @@ class PlaywrightBrowser(Browser):
                 errors.append(exc)
 
         return errors
+
+
+def _is_already_closed_error(exc: Exception) -> bool:
+    """窗口已由用户关闭时，重复关闭不算资源清理失败。"""
+    return isinstance(exc, PlaywrightError) and type(exc).__name__ == "TargetClosedError"

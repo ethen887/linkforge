@@ -3,6 +3,7 @@
 import logging
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from math import isfinite
 from typing import Protocol, TypeVar
@@ -11,6 +12,7 @@ from linkforge.application.task_runner import TaskDetector, TaskHandler, TaskTyp
 from linkforge.browser.base import Browser
 from linkforge.browser.element import BrowserElement
 from linkforge.browser.exceptions import BrowserError
+from linkforge.llm.errors import ModelRequestCancelledError
 from linkforge.platforms.chaoxing.dom import inspect_chaoxing_page
 from linkforge.platforms.chaoxing.exceptions import (
     ChaoxingInspectionError,
@@ -26,6 +28,7 @@ from linkforge.platforms.chaoxing.quiz_dom import (
     QUIZ_MODULE_PATH,
     QuizDOMQuestion,
 )
+from linkforge.platforms.chaoxing.quiz_draft import DRAFT_CONTROL_SELECTOR, click_draft_save
 from linkforge.platforms.chaoxing.quiz_models import (
     QuizAnswer,
     QuizQuestion,
@@ -96,6 +99,17 @@ class _QuizSnapshotChangedError(ChaoxingQuizStateError):
     """两次全新检查之间，未提交的 quiz DOM 发生了变化。"""
 
 
+class QuizStoppedError(Exception):
+    """协作停止，避免后续选项点击或提交。"""
+
+
+class _QuizDraftClickedError(Exception):
+    """已点击暂存，释放旧题目句柄后再检查页面。"""
+
+    def __init__(self, selected: frozenset[str]) -> None:
+        self.selected = selected
+
+
 class ChaoxingQuizTaskHandler(TaskHandler):
     """作答一道 quiz；run() 仅在平台完成被校验后返回。
 
@@ -123,6 +137,34 @@ class ChaoxingQuizTaskHandler(TaskHandler):
         self._sleep = sleep
         self._monotonic = monotonic
         self.last_answers: tuple[QuizAnswer, ...] = ()
+        self._should_stop: Callable[[], bool] | None = None
+
+    def _check_stop(self) -> None:
+        if self._should_stop is not None and self._should_stop():
+            raise QuizStoppedError
+
+    def _question_scope(self, module_url: str) -> AbstractContextManager[tuple[BrowserElement, ...]]:
+        return self._browser.element_scope(QUESTION_FRAME_PATH, QUESTION_SELECTOR, ancestor_url=module_url)
+
+    def _draft_scope(self, module_url: str) -> AbstractContextManager[tuple[BrowserElement, ...]]:
+        return self._browser.element_scope(
+            QUESTION_FRAME_PATH, DRAFT_CONTROL_SELECTOR, ancestor_url=module_url
+        )
+
+    def _save_after_click(
+        self, content_url: str, module_url: str, index: int, selected: frozenset[str]
+    ) -> None:
+        self._check_stop()
+        if self._target() != (content_url, module_url):
+            raise ChaoxingQuizStateError("Active Quiz changed before draft save.")
+        try:
+            with self._draft_scope(module_url) as elements:
+                clicked = click_draft_save(elements, check_stop=self._check_stop)
+        except BrowserError as exc:
+            raise ChaoxingQuizStateError("Cannot inspect draft save controls.") from exc
+        if clicked:
+            logger.info("第 %d 题：已点击暂时保存，正在重新核验选项", index + 1)
+            raise _QuizDraftClickedError(selected)
 
     def _target(self) -> tuple[str, str]:
         if self._detector.detect() is not TaskType.QUIZ:
@@ -161,12 +203,9 @@ class ChaoxingQuizTaskHandler(TaskHandler):
             deadline = self._monotonic() + self._config.readiness_timeout_seconds
         last_error: BrowserError | None = None
         while True:
+            self._check_stop()
             try:
-                with self._browser.element_scope(
-                    QUESTION_FRAME_PATH,
-                    QUESTION_SELECTOR,
-                    ancestor_url=module_url,
-                ) as elements:
+                with self._question_scope(module_url) as elements:
                     if not elements:
                         raise BrowserError("Quiz question frame contains no questions.")
                     return operation(elements)
@@ -298,8 +337,9 @@ class ChaoxingQuizTaskHandler(TaskHandler):
         elements: tuple[BrowserElement, ...],
         index: int,
         question_count: int,
-    ) -> QuizQuestion:
-        return self._questions(elements, expected_count=question_count)[index].capture()
+    ) -> QuizQuestion | QuizAnswer:
+        dom = self._questions(elements, expected_count=question_count)[index]
+        return dom.resumable_answer() or dom.capture()
 
     def _reconcile_question(
         self,
@@ -307,6 +347,8 @@ class ChaoxingQuizTaskHandler(TaskHandler):
         question: QuizQuestion,
         answer: QuizAnswer,
         question_count: int,
+        *,
+        on_selection_changed: Callable[[frozenset[str]], None] | None = None,
     ) -> None:
         dom = self._questions(elements, expected_count=question_count)[question.index]
         if dom.hint != question.question_type or tuple(dom.options) != question.option_letters:
@@ -318,7 +360,49 @@ class ChaoxingQuizTaskHandler(TaskHandler):
             poll_interval_seconds=self._config.poll_interval_seconds,
             sleep=self._sleep,
             monotonic=self._monotonic,
+            before_click=self._check_stop,
+            on_selection_changed=on_selection_changed,
         )
+
+    def _reconcile_and_save(
+        self,
+        content_url: str,
+        module_url: str,
+        question: QuizQuestion,
+        answer: QuizAnswer,
+        question_count: int,
+    ) -> None:
+        expected_after_save: frozenset[str] | None = None
+
+        def save(selected: frozenset[str]) -> None:
+            self._save_after_click(content_url, module_url, question.index, selected)
+
+        def reconcile(elements: tuple[BrowserElement, ...]) -> None:
+            if expected_after_save is not None:
+                if self._target() != (content_url, module_url):
+                    raise ChaoxingQuizStateError("Active Quiz changed after draft save.")
+                questions = self._questions(elements, expected_count=question_count)
+                if questions[question.index].selected(answer.question_type) != expected_after_save:
+                    raise ChaoxingQuizStateError("暂存后当前题目的选项发生变化，已停止继续作答。")
+                for dom, previous in zip(questions[: question.index], self.last_answers, strict=True):
+                    if dom.selected(previous.question_type) != set(previous.choices):
+                        raise ChaoxingQuizStateError("暂存后此前题目的选项发生变化，已停止继续作答。")
+            self._reconcile_question(elements, question, answer, question_count, on_selection_changed=save)
+
+        # 一次选项变化后若点击了暂存，就退出旧作用域，用新句柄继续。
+        # 每个选项最多变更一次，额外一次用于最终回读，避免保存后重绘造成循环。
+        for _ in range(len(question.option_letters) + 1):
+            try:
+                self._with_questions(module_url, reconcile)
+                return
+            except _QuizDraftClickedError as saved:
+                expected_after_save = saved.selected
+                self._check_stop()
+            except _QuizSnapshotChangedError as exc:
+                if expected_after_save is not None:
+                    raise ChaoxingQuizStateError("Quiz changed after draft save.") from exc
+                raise
+        raise ChaoxingQuizStateError("Quiz draft save did not reach a stable selection.")
 
     def _verify_answers(
         self,
@@ -333,6 +417,7 @@ class ChaoxingQuizTaskHandler(TaskHandler):
 
     def _answer_all(self) -> tuple[str, str]:
         self.last_answers = ()
+        self._check_stop()
         try:
             content_url, module_url = self._target()
             deadline = self._monotonic() + self._config.readiness_timeout_seconds
@@ -342,14 +427,15 @@ class ChaoxingQuizTaskHandler(TaskHandler):
             answers: list[QuizAnswer] = []
             index = 0
             while index < question_count:
+                self._check_stop()
                 if self._target() != (content_url, module_url):
                     raise ChaoxingQuizStateError("Active Quiz changed while answering.")
 
-                def capture(elements: tuple[BrowserElement, ...]) -> QuizQuestion:
+                def capture(elements: tuple[BrowserElement, ...]) -> QuizQuestion | QuizAnswer:
                     return self._capture_question(elements, index, question_count)
 
                 try:
-                    question = self._with_questions(module_url, capture, deadline=deadline)
+                    captured = self._with_questions(module_url, capture, deadline=deadline)
                 except _QuizSnapshotChangedError as exc:
                     if answers:
                         raise ChaoxingQuizStateError("Quiz changed after answer selection.") from exc
@@ -358,21 +444,30 @@ class ChaoxingQuizTaskHandler(TaskHandler):
                     )
                     index = 0
                     continue
+                self._check_stop()
+                if isinstance(captured, QuizAnswer):
+                    answers.append(captured)
+                    self.last_answers = tuple(answers)
+                    logger.info("第 %d 题：检测到已有答案，保留选项并跳过模型请求", index + 1)
+                    index += 1
+                    continue
+                question = captured
                 try:
+                    self._check_stop()
                     answer = self._solver.solve(question)
                 except ChaoxingQuizError:
                     raise
+                except (QuizStoppedError, ModelRequestCancelledError):
+                    raise
                 except Exception as exc:
                     raise ChaoxingQuizSolverError(f"Question {question.index + 1}: solver failed.") from exc
+                self._check_stop()
                 validate_answer(question, answer)
                 if self._target() != (content_url, module_url):
                     raise ChaoxingQuizStateError("Active Quiz changed during vision request.")
 
-                def reconcile(elements: tuple[BrowserElement, ...]) -> None:
-                    self._reconcile_question(elements, question, answer, question_count)
-
                 try:
-                    self._with_questions(module_url, reconcile, deadline=deadline)
+                    self._reconcile_and_save(content_url, module_url, question, answer, question_count)
                 except _QuizSnapshotChangedError as exc:
                     if answers:
                         raise ChaoxingQuizStateError("Quiz changed after answer selection.") from exc
@@ -399,9 +494,22 @@ class ChaoxingQuizTaskHandler(TaskHandler):
 
     def run(self) -> None:
         """作答并提交一道 quiz，然后校验平台的完成状态。"""
+        self.run_interruptibly()
+
+    def run_interruptibly(self, *, should_stop: Callable[[], bool] | None = None) -> None:
+        """在题目处理和提交前响应停止请求。"""
+        self._should_stop = should_stop
         logger.info("Quiz handler started")
         try:
             self._run()
+        except ModelRequestCancelledError:
+            if self._should_stop is None or not self._should_stop():
+                raise
+            logger.info("Quiz handler stopped")
+            return
+        except QuizStoppedError:
+            logger.info("Quiz handler stopped")
+            return
         except BaseException:
             logger.error("Quiz handler failed")
             raise
@@ -409,6 +517,7 @@ class ChaoxingQuizTaskHandler(TaskHandler):
 
     def _run(self) -> None:
         content_url, module_url = self._answer_all()
+        self._check_stop()
         if self._submitter is None:
             raise ChaoxingQuizSubmissionError(
                 "All answers verified; stopped before submission. The real visible submit entry, "
@@ -424,6 +533,7 @@ class ChaoxingQuizTaskHandler(TaskHandler):
             raise ChaoxingQuizSubmissionError("Quiz UI submission failed; it will not be retried.") from exc
         deadline = self._monotonic() + self._config.completion_timeout_seconds
         while True:
+            self._check_stop()
             try:
                 state = inspect_chaoxing_page(self._browser)
                 matches = [m for m in state.modules if m.url == module_url]
