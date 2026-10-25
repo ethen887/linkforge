@@ -1,11 +1,12 @@
 import json
 from typing import Any, cast
 
-from openai import AsyncOpenAI, OpenAI
+from openai import AsyncOpenAI, DefaultAsyncHttpxClient, OpenAI
 
 from linkforge.llm.base import LLM, LLMMessage, LLMResponse, ToolCall
 from linkforge.llm.errors import ModelRequestCancelledError, ModelRequestError
 from linkforge.llm.request_runtime import REQUEST_TIMEOUT_SECONDS, RequestProgress, run_request
+from linkforge.llm.stream_cleanup import own_response_stream
 
 _JSON_OBJECT_ENDPOINTS = {
     "https://api.deepseek.com",
@@ -34,6 +35,7 @@ class OpenAIInterface(LLM):
             base_url=self.client.base_url,
             timeout=REQUEST_TIMEOUT_SECONDS,
             max_retries=0,
+            http_client=DefaultAsyncHttpxClient(event_hooks={"response": [own_response_stream]}),
         ) as client:
             async with client.chat.completions.stream(**options) as stream:
                 async for event in stream:

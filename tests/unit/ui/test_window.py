@@ -49,6 +49,41 @@ def _fill_valid_form(window: MainWindow, *, api_key: str = "test-secret") -> Non
     window.profile_dir_edit.setText("browser-profile")
 
 
+@pytest.mark.parametrize("saved", [False, True])
+def test_draft_review_is_distinct_from_completion_and_can_stop(qt_application, saved):
+    release = threading.Event()
+
+    class ReviewApplication:
+        issues = []
+        review_required = True
+
+        def __init__(self, config):
+            self.config = config
+
+        def run(self):
+            self.config.on_review_required(saved)
+            assert release.wait(3)
+
+        def stop(self):
+            release.set()
+
+    window = MainWindow(application_factory=ReviewApplication, error_presenter=lambda *_: None)
+    _fill_valid_form(window)
+    window.start_button.click()
+    try:
+        _wait_until(qt_application, lambda: window.state is RuntimeState.REVIEW)
+        assert window.stop_button.isEnabled()
+        assert not window.start_button.isEnabled()
+        assert ("草稿已暂存" if saved else "未全部确认暂存") in window.statusBar().currentMessage()
+        window.stop_button.click()
+        _wait_until(qt_application, lambda: window._thread is None)
+        assert "以网页为准" in window.statusBar().currentMessage()
+        assert "运行已完成" not in window.log_edit.toPlainText()
+    finally:
+        release.set()
+        window.close()
+
+
 @pytest.mark.parametrize("outcome", ["complete", "stop", "error"])
 def test_worker_checkpoint_updates_ui_and_persists_before_exit(
     qt_application: QApplication,

@@ -1,13 +1,15 @@
 """平台无关的应用生命周期编排。"""
 
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from linkforge.application.issues import RunIssue
-from linkforge.application.task_runner import TaskRunner
+from linkforge.application.task_runner import TaskReviewRequiredError, TaskRunner
 from linkforge.browser.base import Browser
+from linkforge.browser.exceptions import BrowserError
 from linkforge.browser.factory import create_browser
 from linkforge.config.settings import BrowserConfig, ModelConfig
 from linkforge.llm.base import LLM
@@ -28,6 +30,7 @@ class ApplicationConfig:
     browser_config: BrowserConfig
     model_config: ModelConfig
     on_course_url_changed: Callable[[str], None] | None = field(default=None, repr=False, compare=False)
+    on_review_required: Callable[[bool], None] | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not self.course_url.strip():
@@ -63,6 +66,7 @@ class LinkForgeApplication:
         self._llm_factory = llm_factory
         self._stop_requested = False
         self.issues: list[RunIssue] = []
+        self.review_required = False
 
     def run(self) -> None:
         """运行直至平台完成、响应停止请求或发生错误。"""
@@ -90,7 +94,21 @@ class LinkForgeApplication:
                     model=self._config.model_config.model_name,
                 )
                 self.issues = getattr(runner, "issues", [])
-                runner.run(should_stop=self._should_stop)
+                try:
+                    runner.run(should_stop=self._should_stop)
+                except TaskReviewRequiredError as review:
+                    self.review_required = True
+                    logger.info("草稿处理已暂停，等待人工检查；停止后关闭浏览器")
+                    if self._config.on_review_required is not None:
+                        self._config.on_review_required(review.saved)
+                    # 保留浏览器供人工修改及提交；此处不再分派任务或判断平台完成。
+                    while not self._should_stop():
+                        try:
+                            browser.evaluate_in_frames("() => null")
+                        except BrowserError:
+                            break
+                        time.sleep(0.2)
+                    return
                 logger.info("Platform runtime completed")
         except ModelRequestCancelledError:
             if not self._should_stop():

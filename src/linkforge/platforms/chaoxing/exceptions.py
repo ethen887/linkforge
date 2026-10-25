@@ -13,6 +13,10 @@ class ChaoxingQuizStateError(ChaoxingQuizError):
     """测验 frame、题目结构或选择状态不可靠。"""
 
 
+class ChaoxingWrittenStateError(ChaoxingQuizStateError):
+    """大题状态错误；仅使用程序内固定说明，禁止传入页面、模型或 SDK 原始文本。"""
+
+
 class ChaoxingQuizCaptureError(ChaoxingQuizError):
     """完整的题目无法被截取为图像。"""
 

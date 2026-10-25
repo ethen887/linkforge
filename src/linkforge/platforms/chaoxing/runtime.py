@@ -10,7 +10,6 @@ from linkforge.llm.base import LLM
 from linkforge.platforms.chaoxing.assignment_handler import (
     AssignmentDetector,
     AssignmentSubmitter,
-    StandaloneAssignmentHandler,
 )
 from linkforge.platforms.chaoxing.assignment_page import assignment_identity
 from linkforge.platforms.chaoxing.comment_handler import (
@@ -29,6 +28,9 @@ from linkforge.platforms.chaoxing.startup import ChaoxingStartupWait
 from linkforge.platforms.chaoxing.task_detector import ChaoxingTaskDetector
 from linkforge.platforms.chaoxing.video_handler import ChaoxingVideoTaskHandler
 from linkforge.platforms.chaoxing.video_state import VideoSession
+from linkforge.platforms.chaoxing.written_answer import LLMWrittenSolver
+from linkforge.platforms.chaoxing.written_assignment import DraftingAssignmentHandler
+from linkforge.platforms.chaoxing.written_review import LLMWrittenReviewer
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +60,14 @@ class ChaoxingPlatformRuntime(PlatformRuntime):
         logger.info("Building Chaoxing task workflow")
         if assignment_identity(browser.current_url()) is not None:
             assignment_detector = AssignmentDetector(browser)
-            handler = StandaloneAssignmentHandler(
+            handler = DraftingAssignmentHandler(
                 browser,
                 solver=LLMQuizSolver(llm=llm, model=model),
                 submitter=AssignmentSubmitter(),
                 detector=assignment_detector,
             )
+            handler.written_solver = LLMWrittenSolver(llm=llm, model=model)
+            handler.written_reviewer = LLMWrittenReviewer(llm=llm, model=model)
             logger.info("Standalone assignment workflow ready")
             return TaskRunner(
                 detector=assignment_detector,

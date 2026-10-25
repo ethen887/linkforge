@@ -26,3 +26,23 @@ class BrowserElement(Protocol):
     def click(self) -> None:
         """执行一次常规的可操作的 DOM 点击。"""
         ...
+
+    def scroll_into_view(self) -> None:
+        """将元素滚动至视口中部，减少固定顶栏遮挡；不改变内容或强制点击。"""
+        ...
+
+    def fill(self, text: str) -> None:
+        """通过正常输入操作填写文本框或可编辑区域。"""
+        ...
+
+    def press(self, key: str) -> None:
+        """在元素上发送按键。"""
+        ...
+
+    def type_text(self, text: str) -> None:
+        """通过键盘输入纯文本，不解释为 HTML。"""
+        ...
+
+    def frame_query_all(self, selector: str) -> tuple["BrowserElement", ...]:
+        """在此 iframe 的文档内查询；返回引用仍受当前作用域约束。"""
+        ...

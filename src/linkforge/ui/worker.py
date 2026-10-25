@@ -40,6 +40,8 @@ class RuntimeWorker(QObject):
 
     running = Signal()
     completed = Signal()
+    review_ready = Signal(bool)
+    review_finished = Signal()
     failed = Signal(str, str)
     finished = Signal()
     course_url_changed = Signal(str)
@@ -58,7 +60,11 @@ class RuntimeWorker(QObject):
         """在所属的工作线程上构建并同步运行应用。"""
         application: LinkForgeApplication | None = None
         try:
-            config = replace(self._config, on_course_url_changed=self.course_url_changed.emit)
+            config = replace(
+                self._config,
+                on_course_url_changed=self.course_url_changed.emit,
+                on_review_required=self.review_ready.emit,
+            )
             application = self._application_factory(config)
             with self._lock:
                 self._application = application
@@ -74,7 +80,10 @@ class RuntimeWorker(QObject):
             logger.error("GUI worker stopped with %s", error_type)
             self.failed.emit(user_error.category, summary)
         else:
-            self.completed.emit()
+            if getattr(application, "review_required", False):
+                self.review_finished.emit()
+            else:
+                self.completed.emit()
         finally:
             issues: tuple[RunIssue, ...] = tuple(getattr(application, "issues", ()))
             if issues:
@@ -137,6 +146,42 @@ def _safe_error_summary(summary: str, api_key: str) -> str:
 
 def _user_message(record: logging.LogRecord) -> str | None:
     message = record.getMessage()
+    if record.name == "linkforge.platforms.chaoxing.written_answer" and record.msg in {
+        "大题答案校验失败：%s",
+        "大题答案格式修复失败：%s",
+        "大题答案格式不符合要求，正在尝试一次格式修复",
+        "大题答案格式修复成功，继续填写",
+        "公式转义已规范化：已去除命令前多余的反斜杠",
+        "公式格式已规范化：已处理外层分隔符或多余转义",
+        "正文中的成对公式已拆分，将通过 TEX 渲染",
+    }:
+        return message
+    if record.name == "linkforge.platforms.chaoxing.written_assignment" and record.msg in {
+        "第 %d 题：正在判断已有答案是否需要重做",
+        "第 %d 题：AI 判断可保留已有答案，已跳过重做",
+        "第 %d 题：AI 判断需要重做，生成完整答案后覆盖",
+        "第 %d 题：正在生成大题草稿",
+        "第 %d 题：大题草稿已填写并确认暂存",
+        "作业草稿未全部确认暂存，已暂停等待人工检查（%s）",
+        "作业草稿暂停原因：%s",
+        "整份作业共 %d 题：逐题作答并暂存，全部处理后等待检查",
+        "整份作业 %d 题已处理并确认暂存，等待人工检查和提交",
+        "第 %d 题：正在录入第 %d/%d 段",
+        "第 %d 题：第 %d/%d 段已核验",
+        "第 %d 题：%s失败（%s）",
+        "第 %d 题：已回读确认交互生效，继续后续核验",
+        "第 %d 题：已确认交互未生效，重新定位后重试一次",
+        "作业核验失败：题目数量、题型或题干发生变化",
+        "第 %d 题：暂存后正文或公式与录入结果不一致",
+        "第 %d 题：编辑器内容未同步到暂存表单",
+        "第 %d 题：正在进行第 %d 轮作答审核",
+        "第 %d 题：第 %d 轮作答审核通过",
+        "第 %d 题：第 %d 轮审核问题：%s",
+        "第 %d 题：正在根据审核记录进行第 %d 次重做",
+        "作业大题自动审核全部通过，草稿等待人工检查",
+        "作答审核仍未通过，已达到两轮自动重做上限，保留草稿等待人工检查",
+    }:
+        return message
     if record.name == "linkforge.platforms.chaoxing.quiz_draft":
         return message if message == "暂存按钮不唯一或暂不可用，已跳过本次暂存点击" else None
     if record.name == "linkforge.platforms.chaoxing.quiz_handler" and record.msg in {

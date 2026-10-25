@@ -198,7 +198,14 @@ def test_real_sdk_streaming_and_cancellation_close_http_transport(provider, hang
     def make_client(**kwargs):
         return sdk_class(**kwargs, http_client=httpx.AsyncClient(transport=httpx.MockTransport(transport)))
 
-    monkeypatch.setattr(module, sdk_name, make_client)
+    if provider == "openai":
+        monkeypatch.setattr(
+            module,
+            "DefaultAsyncHttpxClient",
+            lambda **kwargs: httpx.AsyncClient(transport=httpx.MockTransport(transport), **kwargs),
+        )
+    else:
+        monkeypatch.setattr(module, sdk_name, make_client)
     adapter_class = module.OpenAIInterface if provider == "openai" else module.AnthropicInterface
     adapter = adapter_class(api_key="PRIVATE-KEY", base_url="https://models.example.test/v1")
     adapter.configure_runtime(should_stop=stop.is_set)

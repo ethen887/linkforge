@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from linkforge.application.task_runner import TaskType
+from linkforge.application.task_runner import TaskReviewRequiredError, TaskType
 from linkforge.browser.playwright import PlaywrightBrowser
 from linkforge.llm.base import LLM, LLMResponse
 from linkforge.platforms.chaoxing.assignment_handler import (
@@ -128,25 +128,28 @@ def _open(browser, *, mode="receipt", response=True, body=None):
     return requests
 
 
-@pytest.mark.parametrize("mode", ["receipt", "close"])
 @pytest.mark.parametrize("question_count", ["2", "encoded-question-count"])
-def test_direct_assignment_startup_answer_submit_and_complete_once(mode, question_count):
+def test_direct_assignment_startup_answers_all_objective_questions_and_only_saves(question_count):
     with PlaywrightBrowser(headless=True, timeout_ms=2_000) as browser:
-        body = _html(mode).replace(
+        body = _with_draft_button().replace(
             'name="totalQuestionNum" value="2"', f'name="totalQuestionNum" value="{question_count}"'
         )
-        requests = _open(browser, mode=mode, body=body)
+        requests = _open(browser, body=body)
         assert ChaoxingStartupWait(page_timeout_seconds=1).wait(
             browser=browser, course_url=URL, should_stop=lambda: False
         )
         llm = StubLLM()
         runtime = ChaoxingPlatformRuntime(quiz_submitter=SimpleNamespace(submit=lambda *_args: None))
         runner = runtime.build_runner(browser=browser, llm=llm, model="test-model")
-        runner.run()
+        with pytest.raises(TaskReviewRequiredError) as caught:
+            runner.run()
+        assert caught.value.saved
         assert llm.calls == 2
-        assert len(requests) == 1
-        assert requests[0]["answer1"] == ["B"]
-        assert requests[0]["answer2"] == ["false"]
+        assert len(requests) == 3
+        assert all(request["pyFlag"] == ["1"] for request in requests)
+        assert requests[-1]["answer1"] == ["B"]
+        assert requests[-1]["answer2"] == ["false"]
+        assert not browser._require_page().locator("#workpop").is_visible()
         assert runner.issues == []
 
 

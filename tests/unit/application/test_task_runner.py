@@ -12,6 +12,7 @@ from linkforge.application.task_runner import (
     TaskHandler,
     TaskPageChangedError,
     TaskRecovery,
+    TaskReviewRequiredError,
     TaskRunner,
     TaskType,
     UnknownTaskError,
@@ -50,6 +51,27 @@ class RecordingTaskHandler(TaskHandler):
 
 def _no_sleep(_seconds: float) -> None:
     pass
+
+
+def test_review_does_not_recover_skip_or_detect_again():
+    class Recovery:
+        issues = []
+
+        def checkpoint(self):
+            pass
+
+        def recover(self, *args):
+            raise AssertionError("Review must not skip the assignment")
+
+    runner, detector, handlers = _runner([TaskType.QUIZ], recovery=Recovery())
+
+    def review():
+        raise TaskReviewRequiredError
+
+    handlers[TaskType.QUIZ].run = review
+    with pytest.raises(TaskReviewRequiredError):
+        runner.run()
+    assert detector.call_count == 1
 
 
 def _runner(

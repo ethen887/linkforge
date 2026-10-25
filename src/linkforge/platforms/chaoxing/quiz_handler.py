@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Protocol, TypeVar
 
-from linkforge.application.task_runner import TaskDetector, TaskHandler, TaskType
+from linkforge.application.task_runner import TaskDetector, TaskHandler, TaskReviewRequiredError, TaskType
 from linkforge.browser.base import Browser
 from linkforge.browser.element import BrowserElement
 from linkforge.browser.exceptions import BrowserError
@@ -510,6 +510,9 @@ class ChaoxingQuizTaskHandler(TaskHandler):
         except QuizStoppedError:
             logger.info("Quiz handler stopped")
             return
+        except TaskReviewRequiredError:
+            logger.info("草稿处理已交给人工检查")
+            raise
         except BaseException:
             logger.error("Quiz handler failed")
             raise
