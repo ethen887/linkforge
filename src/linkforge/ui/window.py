@@ -51,6 +51,8 @@ class RuntimeState(Enum):
     IDLE = "空闲"
     STARTING = "正在启动"
     RUNNING = "运行中"
+    REVIEW = "等待检查草稿"
+    REVIEW_ENDED = "草稿检查已结束"
     STOPPING = "正在停止"
     FINISHED = "已完成"
     FINISHED_WITH_ISSUES = "已结束，有待处理问题"
@@ -335,6 +337,8 @@ class MainWindow(QMainWindow):
         thread.started.connect(worker.run)
         worker.running.connect(self._on_running)
         worker.completed.connect(self._on_completed)
+        worker.review_ready.connect(self._on_review_ready)
+        worker.review_finished.connect(self._on_review_finished)
         worker.failed.connect(self._on_failed)
         worker.course_url_changed.connect(self._on_course_url_changed)
         worker.issues_ready.connect(self._on_issues_ready)
@@ -382,6 +386,7 @@ class MainWindow(QMainWindow):
         if self._worker is None or self._state not in {
             RuntimeState.STARTING,
             RuntimeState.RUNNING,
+            RuntimeState.REVIEW,
         }:
             return
         self._worker.request_stop()
@@ -399,6 +404,21 @@ class MainWindow(QMainWindow):
         if self._state is not RuntimeState.STOPPING:
             self._set_state(RuntimeState.RUNNING, "LinkForge 正在运行")
             self._append_log("LinkForge 已开始运行")
+
+    def _on_review_ready(self, saved: bool) -> None:
+        if self._state is RuntimeState.STOPPING:
+            return
+        message = (
+            "草稿已暂存，请在浏览器检查、修改并手动提交；停止后关闭浏览器。"
+            if saved
+            else "草稿未全部确认暂存或审核未通过，请在浏览器检查并手动保存；停止后关闭浏览器。"
+        )
+        self._set_state(RuntimeState.REVIEW, message)
+        self._append_log(message)
+
+    def _on_review_finished(self) -> None:
+        self._set_state(RuntimeState.REVIEW_ENDED, "草稿检查会话已结束，作业是否提交请以网页为准。")
+        self._append_log("草稿检查会话已结束，未自动提交作业")
 
     def _on_completed(self) -> None:
         if self._state is RuntimeState.STOPPING:
@@ -460,6 +480,7 @@ class MainWindow(QMainWindow):
             in {
                 RuntimeState.IDLE,
                 RuntimeState.FINISHED,
+                RuntimeState.REVIEW_ENDED,
                 RuntimeState.FINISHED_WITH_ISSUES,
                 RuntimeState.ERROR,
             }
@@ -468,7 +489,7 @@ class MainWindow(QMainWindow):
         for widget in self._configuration_widgets:
             widget.setEnabled(editable)
         self.start_button.setEnabled(editable)
-        self.stop_button.setEnabled(self._state is RuntimeState.RUNNING and active)
+        self.stop_button.setEnabled(self._state in {RuntimeState.RUNNING, RuntimeState.REVIEW} and active)
         color = "#b42318" if self._state is RuntimeState.ERROR else "#374151"
         self.status_label.setText(f"● {self._state.value}")
         self.status_label.setStyleSheet(f"color: {color}; font-weight: 600;")

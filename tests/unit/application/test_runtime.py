@@ -8,7 +8,13 @@ import pytest
 
 import linkforge.application.runtime as runtime_module
 from linkforge.application.runtime import ApplicationConfig, LinkForgeApplication
-from linkforge.application.task_runner import TaskDetector, TaskHandler, TaskRunner, TaskType
+from linkforge.application.task_runner import (
+    TaskDetector,
+    TaskHandler,
+    TaskReviewRequiredError,
+    TaskRunner,
+    TaskType,
+)
 from linkforge.browser.base import Browser
 from linkforge.config.settings import BrowserConfig, ModelConfig
 from linkforge.llm.base import LLM, LLMMessage, LLMResponse
@@ -109,6 +115,35 @@ def _config(course_url: str = "https://courses.example.test/course") -> Applicat
             model_name="test-model",
         ),
     )
+
+
+@pytest.mark.parametrize("saved", [False, True])
+def test_review_retains_browser_until_stop_and_does_not_report_complete(saved, caplog):
+    from dataclasses import replace
+
+    events = []
+    browser = RecordingBrowser(events)
+    runner = RecordingTaskRunner(events, run_error=TaskReviewRequiredError(saved=saved))
+    platform = RecordingPlatformRuntime(events, runner)
+    observed = []
+
+    def review(is_saved):
+        assert "browser.close" not in events
+        observed.append(is_saved)
+        application.stop()
+
+    application = LinkForgeApplication(
+        config=replace(_config(), on_review_required=review),
+        platform=platform,
+        browser_factory=lambda _: browser,
+        llm_factory=lambda _: FakeLLM(),
+    )
+    application.run()
+    assert observed == [saved]
+    assert application.review_required
+    assert events.count("runner.run") == 1
+    assert events[-1] == "browser.close"
+    assert "Platform runtime completed" not in caplog.text
 
 
 def _application(

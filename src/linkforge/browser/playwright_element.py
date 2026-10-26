@@ -53,6 +53,47 @@ class _Element:
         except Error as exc:
             raise BrowserElementError("Failed to click scoped DOM element.") from exc
 
+    def scroll_into_view(self) -> None:
+        try:
+            self._require_live()
+            self._handle.evaluate(
+                "e => e.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'})"
+            )
+        except Error as exc:
+            raise BrowserElementError("Failed to bring scoped DOM element into view.") from exc
+
+    def fill(self, text: str) -> None:
+        try:
+            self._require_live()
+            self._handle.fill(text)
+        except Error as exc:
+            raise BrowserElementError("Failed to fill scoped DOM element.") from exc
+
+    def press(self, key: str) -> None:
+        try:
+            self._require_live()
+            self._handle.press(key)
+        except Error as exc:
+            raise BrowserElementError("Failed to press scoped DOM element.") from exc
+
+    def type_text(self, text: str) -> None:
+        try:
+            self._require_live()
+            self._handle.focus()
+            self._page.keyboard.insert_text(text)
+        except Error as exc:
+            raise BrowserElementError("Failed to type in scoped DOM element.") from exc
+
+    def frame_query_all(self, selector: str) -> tuple[BrowserElement, ...]:
+        try:
+            self._require_live()
+            frame = self._handle.content_frame()
+            if frame is None:
+                raise BrowserElementError("Scoped frame is not ready.")
+            return tuple(_Element(h, self._scope, self._page) for h in frame.query_selector_all(selector))
+        except Error as exc:
+            raise BrowserElementError("Failed to query scoped frame.") from exc
+
 
 def _under(frame: Frame, ancestor: Frame) -> bool:
     parent = frame.parent_frame

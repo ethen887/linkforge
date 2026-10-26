@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Protocol, TypeVar
 
-from linkforge.application.task_runner import TaskDetector, TaskHandler, TaskType
+from linkforge.application.task_runner import TaskDetector, TaskHandler, TaskReviewRequiredError, TaskType
 from linkforge.browser.base import Browser
 from linkforge.browser.element import BrowserElement
 from linkforge.browser.exceptions import BrowserError
@@ -81,6 +81,8 @@ class ChaoxingQuizHandlerConfig:
     completion_timeout_seconds: float = 30.0
     poll_interval_seconds: float = 0.1
     stable_question_observations: int = 2
+    formula_preview_timeout_seconds: float = 30.0
+    formula_insert_timeout_seconds: float = 60.0
 
     def __post_init__(self) -> None:
         for value in (
@@ -88,6 +90,8 @@ class ChaoxingQuizHandlerConfig:
             self.selection_timeout_seconds,
             self.completion_timeout_seconds,
             self.poll_interval_seconds,
+            self.formula_preview_timeout_seconds,
+            self.formula_insert_timeout_seconds,
         ):
             if not isfinite(value) or value <= 0:
                 raise ValueError("Quiz timing values must be finite and positive")
@@ -510,6 +514,9 @@ class ChaoxingQuizTaskHandler(TaskHandler):
         except QuizStoppedError:
             logger.info("Quiz handler stopped")
             return
+        except TaskReviewRequiredError:
+            logger.info("草稿处理已交给人工检查")
+            raise
         except BaseException:
             logger.error("Quiz handler failed")
             raise

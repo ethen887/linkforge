@@ -55,6 +55,13 @@ class TaskPageChangedError(Exception):
     """平台确认课程页面已切换，需要重新检测而非恢复旧任务。"""
 
 
+class TaskReviewRequiredError(Exception):
+    """草稿已准备，交还用户检查；不表示任务完成，也不进入故障恢复。"""
+
+    def __init__(self, *, saved: bool = True) -> None:
+        self.saved = saved
+
+
 class TaskRecovery(Protocol):
     """由平台验证问题位置并推进到后续内容。"""
 
@@ -143,6 +150,8 @@ class TaskRunner:
                     raise
                 logger.info("Task runner stopped at task boundary")
                 return
+            except TaskReviewRequiredError:
+                raise
             except TaskPageChangedError:
                 logger.info("Course page changed; detecting the selected content again")
                 continue

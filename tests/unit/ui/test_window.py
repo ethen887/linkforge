@@ -49,6 +49,41 @@ def _fill_valid_form(window: MainWindow, *, api_key: str = "test-secret") -> Non
     window.profile_dir_edit.setText("browser-profile")
 
 
+@pytest.mark.parametrize("saved", [False, True])
+def test_draft_review_is_distinct_from_completion_and_can_stop(qt_application, saved):
+    release = threading.Event()
+
+    class ReviewApplication:
+        issues = []
+        review_required = True
+
+        def __init__(self, config):
+            self.config = config
+
+        def run(self):
+            self.config.on_review_required(saved)
+            assert release.wait(3)
+
+        def stop(self):
+            release.set()
+
+    window = MainWindow(application_factory=ReviewApplication, error_presenter=lambda *_: None)
+    _fill_valid_form(window)
+    window.start_button.click()
+    try:
+        _wait_until(qt_application, lambda: window.state is RuntimeState.REVIEW)
+        assert window.stop_button.isEnabled()
+        assert not window.start_button.isEnabled()
+        assert ("草稿已暂存" if saved else "未全部确认暂存") in window.statusBar().currentMessage()
+        window.stop_button.click()
+        _wait_until(qt_application, lambda: window._thread is None)
+        assert "以网页为准" in window.statusBar().currentMessage()
+        assert "运行已完成" not in window.log_edit.toPlainText()
+    finally:
+        release.set()
+        window.close()
+
+
 @pytest.mark.parametrize("outcome", ["complete", "stop", "error"])
 def test_worker_checkpoint_updates_ui_and_persists_before_exit(
     qt_application: QApplication,
@@ -209,6 +244,27 @@ def test_gui_translates_video_stall_recovery(qt_application: QApplication) -> No
         assert "视频播放暂时停滞" in window.log_edit.toPlainText()
     finally:
         video_logger.setLevel(previous_level)
+        window.close()
+
+
+def test_gui_reports_formula_stages_without_raw_browser_errors(qt_application: QApplication) -> None:
+    window = MainWindow(error_presenter=lambda *_args: None)
+    formula_logger = logging.getLogger("linkforge.platforms.chaoxing.written_formula")
+    previous_level = formula_logger.level
+    try:
+        formula_logger.setLevel(logging.INFO)
+        formula_logger.info("TEX 公式：%s", "等待新公式预览稳定")
+        formula_logger.warning("TEX 公式：预览未就绪，确认前重新输入一次")
+        formula_logger.info("TEX 公式：已确认预览，开始上传并等待插入（不重复确认）")
+        formula_logger.error("PRIVATE-URL PRIVATE-FORMULA")
+        qt_application.processEvents()
+        shown = window.log_edit.toPlainText()
+        assert "等待新公式预览稳定" in shown
+        assert "确认前重新输入一次" in shown
+        assert "开始上传并等待插入" in shown
+        assert "PRIVATE-" not in shown
+    finally:
+        formula_logger.setLevel(previous_level)
         window.close()
 
 
