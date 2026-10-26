@@ -130,7 +130,12 @@ def _handler(browser, model):
         solver=LLMQuizSolver(llm=model, model="test"),
         submitter=AssignmentSubmitter(),
         detector=AssignmentDetector(browser),
-        config=ChaoxingQuizHandlerConfig(readiness_timeout_seconds=1, completion_timeout_seconds=0.3),
+        config=ChaoxingQuizHandlerConfig(
+            readiness_timeout_seconds=1,
+            completion_timeout_seconds=0.3,
+            formula_preview_timeout_seconds=1,
+            formula_insert_timeout_seconds=1,
+        ),
     )
     handler.written_solver = LLMWrittenSolver(llm=model, model="test")
     handler.written_reviewer = LLMWrittenReviewer(llm=model, model="test")

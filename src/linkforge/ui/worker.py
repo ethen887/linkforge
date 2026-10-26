@@ -146,6 +146,12 @@ def _safe_error_summary(summary: str, api_key: str) -> str:
 
 def _user_message(record: logging.LogRecord) -> str | None:
     message = record.getMessage()
+    if record.name == "linkforge.platforms.chaoxing.written_formula" and record.msg in {
+        "TEX 公式：%s",
+        "TEX 公式：预览未就绪，确认前重新输入一次",
+        "TEX 公式：已确认预览，开始上传并等待插入（不重复确认）",
+    }:
+        return message
     if record.name == "linkforge.platforms.chaoxing.written_answer" and record.msg in {
         "大题答案校验失败：%s",
         "大题答案格式修复失败：%s",

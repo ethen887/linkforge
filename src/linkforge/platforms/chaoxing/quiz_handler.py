@@ -81,6 +81,8 @@ class ChaoxingQuizHandlerConfig:
     completion_timeout_seconds: float = 30.0
     poll_interval_seconds: float = 0.1
     stable_question_observations: int = 2
+    formula_preview_timeout_seconds: float = 30.0
+    formula_insert_timeout_seconds: float = 60.0
 
     def __post_init__(self) -> None:
         for value in (
@@ -88,6 +90,8 @@ class ChaoxingQuizHandlerConfig:
             self.selection_timeout_seconds,
             self.completion_timeout_seconds,
             self.poll_interval_seconds,
+            self.formula_preview_timeout_seconds,
+            self.formula_insert_timeout_seconds,
         ):
             if not isfinite(value) or value <= 0:
                 raise ValueError("Quiz timing values must be finite and positive")

@@ -247,6 +247,27 @@ def test_gui_translates_video_stall_recovery(qt_application: QApplication) -> No
         window.close()
 
 
+def test_gui_reports_formula_stages_without_raw_browser_errors(qt_application: QApplication) -> None:
+    window = MainWindow(error_presenter=lambda *_args: None)
+    formula_logger = logging.getLogger("linkforge.platforms.chaoxing.written_formula")
+    previous_level = formula_logger.level
+    try:
+        formula_logger.setLevel(logging.INFO)
+        formula_logger.info("TEX 公式：%s", "等待新公式预览稳定")
+        formula_logger.warning("TEX 公式：预览未就绪，确认前重新输入一次")
+        formula_logger.info("TEX 公式：已确认预览，开始上传并等待插入（不重复确认）")
+        formula_logger.error("PRIVATE-URL PRIVATE-FORMULA")
+        qt_application.processEvents()
+        shown = window.log_edit.toPlainText()
+        assert "等待新公式预览稳定" in shown
+        assert "确认前重新输入一次" in shown
+        assert "开始上传并等待插入" in shown
+        assert "PRIVATE-" not in shown
+    finally:
+        formula_logger.setLevel(previous_level)
+        window.close()
+
+
 def test_gui_reports_following_the_selected_course_page(qt_application: QApplication) -> None:
     window = MainWindow(error_presenter=lambda *_args: None)
     navigation_logger = logging.getLogger("linkforge.platforms.chaoxing.navigation")

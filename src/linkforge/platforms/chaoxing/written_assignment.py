@@ -27,11 +27,10 @@ from linkforge.platforms.chaoxing.written_editor import (
     is_written,
     normalize_editor_text,
 )
+from linkforge.platforms.chaoxing.written_formula import FORMULA_FRAME, VISIBLE, FormulaDialog
 from linkforge.platforms.chaoxing.written_review import ISSUE_LABELS, LLMWrittenReviewer, WrittenAuditRecord
 
 logger = logging.getLogger(__name__)
-_FORMULA_FRAME = 'iframe[src*="/ananas/common-modules/latex/"]'
-_VISIBLE = "e => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden'"
 
 
 def _input_failure_reason(exc: BrowserError) -> str:
@@ -82,8 +81,8 @@ class DraftingAssignmentHandler(StandaloneAssignmentHandler):
         self.audit_history = []
         expected: dict[int, EditorSnapshot | QuizAnswer] = {}
         question_images: dict[int, LLMImage] = {}
-        with self._browser.page_element_scope(_FORMULA_FRAME) as frames:
-            if any(frame.evaluate(_VISIBLE) is True for frame in frames):
+        with self._browser.page_element_scope(FORMULA_FRAME) as frames:
+            if any(frame.evaluate(VISIBLE) is True for frame in frames):
                 raise ChaoxingWrittenStateError("请先关闭已打开的 TEX 窗口，再开始生成草稿。")
 
         def preflight(nodes: tuple[BrowserElement, ...]) -> tuple[bool, ...]:
@@ -311,14 +310,16 @@ class DraftingAssignmentHandler(StandaloneAssignmentHandler):
             ),
         )
 
-    def _wait(self, url: str, predicate: Callable[[], bool]) -> None:
-        deadline = self._monotonic() + self._config.readiness_timeout_seconds
+    def _wait(self, url: str, predicate: Callable[[], bool], *, timeout: float, stage: str) -> None:
+        deadline = self._monotonic() + timeout
         while True:
             self._check_identity(url)
             if predicate():
                 return
             if self._monotonic() >= deadline:
-                raise ChaoxingWrittenStateError("大题公式预览或图片未能在限定时间内生成，请检查页面。")
+                raise ChaoxingWrittenStateError(
+                    f"{stage}超时；已保留草稿，不会重复确认公式，请检查网络和页面。"
+                )
             self._sleep(self._config.poll_interval_seconds)
 
     def _write_draft(
@@ -363,8 +364,8 @@ class DraftingAssignmentHandler(StandaloneAssignmentHandler):
                                 require_images=False, allow_cleared=replace is not None
                             ),
                         )
-                        with self._browser.page_element_scope(_FORMULA_FRAME) as frames:
-                            visible_dialogs = sum(frame.evaluate(_VISIBLE) is True for frame in frames)
+                        with self._browser.page_element_scope(FORMULA_FRAME) as frames:
+                            visible_dialogs = sum(frame.evaluate(VISIBLE) is True for frame in frames)
                     except BrowserError:
                         raise ChaoxingWrittenStateError(
                             "录入中断且无法可靠回读当前内容，已停止重复写入。"
@@ -416,7 +417,18 @@ class DraftingAssignmentHandler(StandaloneAssignmentHandler):
                     before=before,
                     opens_formula=True,
                 )
-                self._insert_formula(url, block.content)
+
+                def before_confirm() -> None:
+                    state = self._with_questions(
+                        url,
+                        lambda nodes: WrittenEditor(nodes[index]).snapshot(
+                            require_images=False, allow_cleared=replace is not None
+                        ),
+                    )
+                    if state != before:
+                        raise ChaoxingWrittenStateError("公式预览期间正文或已有公式发生变化，已停止确认。")
+
+                self._insert_formula(url, block.content, before_confirm=before_confirm)
                 formulas.append(block.content)
             wanted = EditorSnapshot(normalize_editor_text(" ".join(text)), tuple(formulas))
 
@@ -428,89 +440,46 @@ class DraftingAssignmentHandler(StandaloneAssignmentHandler):
                     ),
                 )
                 if state != wanted:
-                    return False
-                return self._with_questions(
+                    if block.kind == "latex" and state == before:
+                        return False  # 点击确认后，平台先上传 PNG，随后异步插入。
+                    raise ChaoxingWrittenStateError("录入后正文或公式与预期不一致，已停止重复写入。")
+                with self._browser.page_element_scope(FORMULA_FRAME) as frames:
+                    if any(frame.evaluate(VISIBLE) is True for frame in frames):
+                        return False
+                image_state = self._with_questions(
                     url,
-                    lambda nodes: (
-                        nodes[index].evaluate(
-                            "e => [...e.querySelector('iframe[id^=ueditor_]').contentDocument.images]"
-                            ".every(i => i.complete && i.naturalWidth > 0)"
-                        )
-                        is True
+                    lambda nodes: nodes[index].evaluate(
+                        "e => {const images = [...e.querySelector('iframe[id^=ueditor_]')"
+                        ".contentDocument.images];"
+                        "if (images.some(i => i.complete && i.naturalWidth === 0)) return 'broken';"
+                        "return images.every(i => i.complete && i.naturalWidth > 0)"
+                        " ? 'ready' : 'loading';}"
                     ),
                 )
+                if image_state == "broken":
+                    raise ChaoxingWrittenStateError(
+                        "公式已插入，但图片加载失败；请检查网络并手动保存，程序不会重复插入。"
+                    )
+                return image_state == "ready"
 
-            self._wait(url, inserted)
+            self._wait(
+                url,
+                inserted,
+                timeout=self._config.formula_insert_timeout_seconds,
+                stage="等待公式上传、插入和图片加载" if block.kind == "latex" else "等待正文回读",
+            )
             logger.info("第 %d 题：第 %d/%d 段已核验", index + 1, block_index + 1, len(draft.blocks))
         return wanted
 
-    def _insert_formula(self, url: str, latex: str) -> None:
-        def with_dialog(operation):
-            self._check_identity(url)
-            with self._browser.page_element_scope(_FORMULA_FRAME) as frames:
-                visible = [frame for frame in frames if frame.evaluate(_VISIBLE) is True]
-                if len(visible) != 1:
-                    return False
-                return operation(visible[0])
-
-        self._wait(url, lambda: with_dialog(lambda frame: bool(frame.frame_query_all("#txta_input"))))
-
-        def fill(frame: BrowserElement, value: str) -> bool:
-            inputs = frame.frame_query_all("#txta_input")
-            if len(inputs) != 1:
-                raise ChaoxingWrittenStateError("TEX 输入框不唯一。")
-            if not value:
-                # 已为空时 fill('') 可能不触发 input，先产生一次实际输入变化。
-                inputs[0].fill(" ")
-            inputs[0].fill(value)
-            # 当前公式组件使用键盘事件触发预览。
-            inputs[0].press("End")
-            if inputs[0].evaluate("e => e.value") != value:
-                raise ChaoxingWrittenStateError("TEX 输入框中的公式与待录入内容不一致，已停止确认。")
-            return True
-
-        # UEditor 会复用公式窗口；先清空旧预览，避免上传上一条公式的 SVG。
-        with_dialog(lambda frame: fill(frame, ""))
-
-        def cleared(frame: BrowserElement) -> bool:
-            outputs = frame.frame_query_all("#wrap_output")
-            return (
-                len(outputs) == 1
-                and outputs[0].evaluate(
-                    "e => !e.querySelector('svg use,svg path,svg text,svg line,"
-                    "svg rect,svg polygon,svg polyline')"
-                )
-                is True
-            )
-
-        self._wait(url, lambda: with_dialog(cleared))
-        if not with_dialog(lambda frame: fill(frame, latex)):
-            raise ChaoxingWrittenStateError("TEX 窗口已改变。")
-
-        def preview(frame: BrowserElement) -> bool:
-            outputs = frame.frame_query_all("#wrap_output")
-            return (
-                len(outputs) == 1
-                and outputs[0].evaluate(
-                    "e => !!e.querySelector('svg use,svg path,svg text,svg line,"
-                    "svg rect,svg polygon,svg polyline')"
-                    " && !e.querySelector('[data-mml-node=merror],mjx-merror')"
-                )
-                is True
-            )
-
-        self._wait(url, lambda: with_dialog(preview))
-
-        def confirm(frame: BrowserElement) -> bool:
-            controls = frame.frame_query_all(".confirmBtn")
-            if len(controls) != 1:
-                raise ChaoxingWrittenStateError("TEX 确认按钮不唯一。")
-            self._check_identity(url)
-            controls[0].click()
-            return True
-
-        if not with_dialog(confirm):
-            raise ChaoxingWrittenStateError("TEX 窗口已改变，请检查当前草稿。")
+    def _insert_formula(self, url: str, latex: str, *, before_confirm: Callable[[], None]) -> None:
+        FormulaDialog(
+            self._browser,
+            check=lambda: self._check_identity(url),
+            sleep=self._sleep,
+            monotonic=self._monotonic,
+            timeout=self._config.formula_preview_timeout_seconds,
+            poll_interval=self._config.poll_interval_seconds,
+        ).insert(latex, before_confirm=before_confirm)
 
     def _save_written(self, url: str) -> None:
         self._check_identity(url)
