@@ -14,6 +14,18 @@ def test_compiler_discovery_supports_per_user_install_with_spaces(tmp_path, monk
     assert find_compiler() == compiler.resolve()
 
 
+def test_compiler_discovery_supports_registry_install(monkeypatch, tmp_path):
+    compiler = tmp_path / "自定义目录" / "Inno Setup 7" / "ISCC.exe"
+    compiler.parent.mkdir(parents=True)
+    compiler.touch()
+    monkeypatch.setattr("scripts.build_installer.shutil.which", lambda _name: None)
+    monkeypatch.setattr("scripts.build_installer._registry_compilers", lambda: iter((compiler,)))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "missing-user"))
+    monkeypatch.setenv("ProgramFiles", str(tmp_path / "missing-program"))
+    monkeypatch.setenv("ProgramFiles(x86)", str(tmp_path / "missing-program-x86"))
+    assert find_compiler() == compiler.resolve()
+
+
 def test_explicit_missing_compiler_does_not_fall_back_to_another_installation(tmp_path):
     with pytest.raises(FileNotFoundError, match="does not exist"):
         find_compiler(tmp_path / "missing.exe")
@@ -21,6 +33,7 @@ def test_explicit_missing_compiler_does_not_fall_back_to_another_installation(tm
 
 def test_missing_compiler_explains_how_to_configure_it(tmp_path, monkeypatch):
     monkeypatch.setattr("scripts.build_installer.shutil.which", lambda _name: None)
+    monkeypatch.setattr("scripts.build_installer._registry_compilers", lambda: iter(()))
     for variable in ("LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"):
         monkeypatch.setenv(variable, str(tmp_path))
     with pytest.raises(FileNotFoundError, match="--iscc"):

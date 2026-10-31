@@ -22,6 +22,8 @@ from linkforge.platforms.chaoxing.quiz_models import (
 )
 from linkforge.platforms.chaoxing.written_answer import LLMWrittenSolver, WrittenDraft
 from linkforge.platforms.chaoxing.written_editor import (
+    EditorImagesNotReadyError,
+    EditorNotReadyError,
     EditorSnapshot,
     WrittenEditor,
     is_written,
@@ -85,17 +87,20 @@ class DraftingAssignmentHandler(StandaloneAssignmentHandler):
             if any(frame.evaluate(VISIBLE) is True for frame in frames):
                 raise ChaoxingWrittenStateError("请先关闭已打开的 TEX 窗口，再开始生成草稿。")
 
-        def preflight(nodes: tuple[BrowserElement, ...]) -> tuple[bool, ...]:
-            kinds = tuple(is_written(e) for e in nodes)
-            for index, (element, written) in enumerate(zip(nodes, kinds, strict=True)):
-                if written:
-                    WrittenEditor(element).snapshot()
-                else:
-                    dom = QuizDOMQuestion(element, index)
-                    dom.selected(dom.hint or QuizQuestionType.SINGLE_CHOICE)
-            return kinds
+        kinds = self._with_questions(url, lambda nodes: tuple(is_written(e) for e in nodes))
+        for index, written in enumerate(kinds):
+            logger.debug(
+                "第 %d/%d 题：开始作业预检，题型=%s", index + 1, len(kinds), "大题" if written else "客观题"
+            )
+            if written:
+                self._existing_snapshot(url, index)
+            else:
 
-        kinds = self._with_questions(url, preflight)
+                def preflight(nodes: tuple[BrowserElement, ...]) -> None:
+                    dom = QuizDOMQuestion(nodes[index], index)
+                    dom.selected(dom.hint or QuizQuestionType.SINGLE_CHOICE)
+
+                self._with_questions(url, preflight)
         logger.info("整份作业共 %d 题：逐题作答并暂存，全部处理后等待检查", len(kinds))
 
         def signatures(nodes: tuple[BrowserElement, ...]) -> tuple[object, ...]:
@@ -136,18 +141,26 @@ class DraftingAssignmentHandler(StandaloneAssignmentHandler):
         for index, written in enumerate(kinds):
             self._with_questions(url, verify)
             if written:
-                state = self._with_questions(url, lambda nodes: WrittenEditor(nodes[index]).snapshot())
+                state, images_ready = self._existing_snapshot(url, index)
                 image = self._with_questions(url, lambda nodes: LLMImage(nodes[index].screenshot()))
                 question_images[index] = image
                 if state.has_content:
-                    logger.info("第 %d 题：正在判断已有答案是否需要重做", index + 1)
-                    rewrite = self.written_solver.needs_rewrite(
-                        image, text=state.text, formulas=state.formulas
-                    )
+                    if images_ready:
+                        logger.info("第 %d 题：正在判断已有答案是否需要重做", index + 1)
+                        rewrite = self.written_solver.needs_rewrite(
+                            image, text=state.text, formulas=state.formulas
+                        )
+                    else:
+                        # 坏图的 LaTeX 已通过解析；不能让已有坏图在每次启动时都阻断作答。
+                        # 仍先生成并校验完整草稿，随后确认原答案未改变，才允许覆盖。
+                        logger.warning(
+                            "第 %d 题：已有公式图片加载失败，公式数据完整，将生成完整草稿后重做", index + 1
+                        )
+                        rewrite = True
                     self._check_identity(url)
                     self._with_questions(url, verify)
                     current = self._with_questions(
-                        url, lambda nodes: WrittenEditor(nodes[index]).snapshot()
+                        url, lambda nodes: WrittenEditor(nodes[index]).snapshot(require_images=False)
                     )
                     if current != state:
                         raise ChaoxingWrittenStateError("模型判断期间大题内容已改变，请检查页面。")
@@ -164,7 +177,9 @@ class DraftingAssignmentHandler(StandaloneAssignmentHandler):
                 self._check_identity(url)
                 self._with_questions(url, verify)
                 # 清空前再次确认用户没有在模型等待期间修改答案。
-                current = self._with_questions(url, lambda nodes: WrittenEditor(nodes[index]).snapshot())
+                current = self._with_questions(
+                    url, lambda nodes: WrittenEditor(nodes[index]).snapshot(require_images=False)
+                )
                 if current != state:
                     raise ChaoxingWrittenStateError("模型等待期间大题内容已改变，请检查页面。")
                 expected[index] = self._write_draft(
@@ -294,6 +309,48 @@ class DraftingAssignmentHandler(StandaloneAssignmentHandler):
         if self._target() != (url, url):
             raise ChaoxingWrittenStateError("大题作答页面已改变。")
 
+    def _existing_snapshot(self, url: str, index: int) -> tuple[EditorSnapshot, bool]:
+        """等待可恢复的只读状态；完整公式元数据允许已有坏图进入重做流程。"""
+        deadline = self._monotonic() + self._config.readiness_timeout_seconds
+        waiting = False
+        while True:
+            self._check_identity(url)
+            try:
+                state = self._with_questions(
+                    url,
+                    lambda nodes: WrittenEditor(nodes[index], question_number=index + 1).snapshot(),
+                    deadline=deadline,
+                )
+            except EditorNotReadyError as exc:
+                if isinstance(exc, EditorImagesNotReadyError) and exc.broken:
+                    state = self._with_questions(
+                        url,
+                        lambda nodes: WrittenEditor(nodes[index], question_number=index + 1).snapshot(
+                            require_images=False
+                        ),
+                        deadline=deadline,
+                    )
+                    return state, False
+                if self._monotonic() >= deadline:
+                    logger.warning("第 %d 题：等待编辑器就绪超时，原因：%s", index + 1, str(exc))
+                    raise ChaoxingWrittenStateError(
+                        f"第 {index + 1} 题编辑器在等待后仍未就绪：{exc}已保留原内容。"
+                    ) from None
+                if not waiting:
+                    logger.info("第 %d 题：等待编辑器初始化、已有答案恢复或公式加载", index + 1)
+                    waiting = True
+                self._sleep(self._config.poll_interval_seconds)
+            else:
+                if waiting:
+                    logger.info("第 %d 题：编辑器已就绪，继续生成草稿", index + 1)
+                logger.debug(
+                    "第 %d 题：编辑器预检通过，正文字符数=%d 公式数=%d",
+                    index + 1,
+                    len(state.text),
+                    len(state.formulas),
+                )
+                return state, True
+
     def _reconcile_one(
         self, element: BrowserElement, question: QuizQuestion, answer: QuizAnswer, url: str
     ) -> None:
@@ -389,7 +446,7 @@ class DraftingAssignmentHandler(StandaloneAssignmentHandler):
         if replace is not None:
 
             def clear(editor: WrittenEditor) -> None:
-                if editor.snapshot() != replace:
+                if editor.snapshot(require_images=False) != replace:
                     raise ChaoxingWrittenStateError("覆盖前大题内容已改变，已保留当前内容。")
                 editor.clear()
 

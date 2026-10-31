@@ -1,5 +1,6 @@
 """已观察到的 UEditor/TEX 页面适配；仅通过普通输入和按钮写入。"""
 
+import logging
 import re
 from dataclasses import dataclass
 
@@ -7,6 +8,18 @@ from linkforge.browser.element import BrowserElement
 from linkforge.platforms.chaoxing.exceptions import ChaoxingWrittenStateError
 
 _WRITTEN_TITLE = re.compile(r"^\s*(?:\d+\s*[.．、]\s*)?[（(【\[]?\s*(简答题|计算题)(?=$|[\s,，:：)）】\]])")
+logger = logging.getLogger(__name__)
+
+
+class EditorNotReadyError(ChaoxingWrittenStateError):
+    """只读预检可等待的编辑器初始化状态，不用于重放写入。"""
+
+
+class EditorImagesNotReadyError(EditorNotReadyError):
+    def __init__(self, *, broken: int, pending: int) -> None:
+        self.broken = broken
+        self.pending = pending
+        super().__init__(f"大题公式图片未就绪：加载失败 {broken} 张，等待加载 {pending} 张。")
 
 
 def is_written(element: BrowserElement) -> bool:
@@ -32,9 +45,12 @@ def normalize_editor_text(text: str) -> str:
 _SNAPSHOT = r"""e => {
     const frames = e.querySelectorAll('iframe[id^="ueditor_"]');
     const fields = e.querySelectorAll('textarea[id^="answer"]');
-    if (frames.length !== 1 || fields.length !== 1) return null;
-    const body = frames[0].contentDocument?.body;
-    if (!body || !body.isContentEditable) return null;
+    const counts = {frame_count:frames.length, field_count:fields.length};
+    if (frames.length !== 1 || fields.length !== 1) return {...counts, status:'structure'};
+    let body;
+    try { body = frames[0].contentDocument?.body; }
+    catch { return {...counts, status:'inaccessible'}; }
+    if (!body || !body.isContentEditable) return {...counts, status:'initializing'};
     const stored = new DOMParser().parseFromString(fields[0].value, 'text/html').body;
     const text = node => (node.innerText || node.textContent || '')
         .replace(/[\u200b\ufeff]/g, '').replace(/\s+/g, ' ').trim();
@@ -45,33 +61,88 @@ _SNAPSHOT = r"""e => {
             return typeof value === 'string' ? value : null; } catch { return null; }
     });
     return {
+        ...counts,
+        status:'ready',
         text: text(body),
         formulas,
-        ready: images.every(img => img.complete && img.naturalWidth > 0),
+        image_count: images.length,
+        invalid_formulas: formulas.filter(value => value === null).length,
+        broken_images: images.filter(img => img.complete && img.naturalWidth === 0).length,
+        pending_images: images.filter(img => !img.complete).length,
         stored_content: !!text(stored) || !!stored.querySelector('img,video,audio,object'),
-        unsupported: !!body.querySelector('video,audio,canvas,svg,object,embed,table,iframe')
+        unsupported_elements: body.querySelectorAll(
+            'video,audio,canvas,svg,object,embed,table,iframe').length
     };
 }"""
 
 
 class WrittenEditor:
-    def __init__(self, element: BrowserElement) -> None:
+    def __init__(self, element: BrowserElement, *, question_number: int | None = None) -> None:
         self.element = element
+        self.question_number = question_number
 
     def snapshot(self, *, require_images: bool = True, allow_cleared: bool = False) -> EditorSnapshot:
         raw = self.element.evaluate(_SNAPSHOT)
+        if not isinstance(raw, dict):
+            raise ChaoxingWrittenStateError("大题编辑器检查未返回有效状态，已保留原内容。")
+
+        def count(key: str) -> int:
+            value = raw.get(key)
+            return value if type(value) is int and value >= 0 else -1
+
+        def fail(reason: str, error: ChaoxingWrittenStateError) -> None:
+            # 仅输出程序定义的分类及计数，不记录正文、公式、图片链接或 SDK 异常。
+            logger.debug(
+                "大题编辑器诊断：question=%s reason=%s frames=%d fields=%d images=%d "
+                "invalid_formulas=%d broken_images=%d pending_images=%d unsupported_elements=%d",
+                self.question_number,
+                reason,
+                count("frame_count"),
+                count("field_count"),
+                count("image_count"),
+                count("invalid_formulas"),
+                count("broken_images"),
+                count("pending_images"),
+                count("unsupported_elements"),
+            )
+            raise error
+
+        if raw.get("status") == "structure":
+            frames, fields = count("frame_count"), count("field_count")
+            error_type = (
+                EditorNotReadyError if frames in (0, 1) and fields in (0, 1) else ChaoxingWrittenStateError
+            )
+            fail(
+                "structure", error_type(f"大题编辑器结构未就绪：正文框 {frames} 个，保存字段 {fields} 个。")
+            )
+        if raw.get("status") == "inaccessible":
+            fail("inaccessible", ChaoxingWrittenStateError("无法读取大题编辑器正文，已保留原内容。"))
+        if raw.get("status") == "initializing":
+            fail("initializing", EditorNotReadyError("大题编辑器正在初始化，正文尚不可编辑。"))
         if (
-            not isinstance(raw, dict)
+            raw.get("status") != "ready"
             or not isinstance(raw.get("text"), str)
             or not isinstance(raw.get("formulas"), list)
-            or any(not isinstance(item, str) for item in raw["formulas"])
-            or raw.get("unsupported") is not False
+            or any(count(key) < 0 for key in ("broken_images", "pending_images", "unsupported_elements"))
         ):
-            raise ChaoxingWrittenStateError("大题编辑器未适配，或包含不能自动核验的内容；已保留原内容。")
-        if require_images and raw.get("ready") is not True:
-            raise ChaoxingWrittenStateError("大题公式图片尚未加载完成，请检查页面。")
+            fail("invalid_state", ChaoxingWrittenStateError("大题编辑器状态数据不完整，已保留原内容。"))
+        if any(not isinstance(item, str) for item in raw["formulas"]):
+            fail(
+                "unrecognized_image",
+                ChaoxingWrittenStateError("大题含有普通图片或无法解析的公式数据，已保留原内容。"),
+            )
+        if count("unsupported_elements"):
+            fail(
+                "unsupported_content",
+                ChaoxingWrittenStateError("大题含有表格、音视频等暂不支持核验的内容，已保留原内容。"),
+            )
+        if require_images and (count("broken_images") or count("pending_images")):
+            fail(
+                "images_not_ready",
+                EditorImagesNotReadyError(broken=count("broken_images"), pending=count("pending_images")),
+            )
         if not allow_cleared and raw.get("stored_content") and not raw["text"] and not raw["formulas"]:
-            raise ChaoxingWrittenStateError("大题已有保存内容，但编辑器尚未恢复，请检查页面。")
+            fail("restoring", EditorNotReadyError("大题已有保存内容，正在等待编辑器恢复。"))
         return EditorSnapshot(raw["text"], tuple(raw["formulas"]))
 
     def body(self) -> BrowserElement:

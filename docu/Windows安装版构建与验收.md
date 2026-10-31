@@ -12,7 +12,7 @@ cd D:\Project\linkforge
 powershell -ExecutionPolicy Bypass -File scripts/build_installer.ps1
 ```
 
-编译器会从 PATH、当前用户 Programs 和 Program Files 中查找，也可以明确指定：
+编译器会从 PATH、常见安装目录和 Windows 注册表中的 Inno Setup 安装记录中查找，也可以明确指定：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/build_installer.ps1 -IsccPath "C:\路径\Inno Setup 7\ISCC.exe"

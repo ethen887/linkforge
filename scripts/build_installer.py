@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 
 from packaging.version import Version
@@ -37,7 +38,36 @@ def find_compiler(explicit: Path | None = None) -> Path:
             compiler = Path(root) / suffix / f"Inno Setup {version}" / "ISCC.exe"
             if compiler.is_file():
                 return compiler.resolve()
+    for compiler in _registry_compilers():
+        if compiler.is_file():
+            return compiler.resolve()
     raise FileNotFoundError("Install Inno Setup, or provide --iscc <path to ISCC.exe>.")
+
+
+def _registry_compilers() -> Iterator[Path]:
+    """Yield compilers from Inno Setup's Windows uninstall registry entries."""
+    if os.name != "nt":
+        return
+    import winreg
+
+    uninstall_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+    access_modes = (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY)
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for access_mode in access_modes:
+            try:
+                with winreg.OpenKey(hive, uninstall_path, 0, winreg.KEY_READ | access_mode) as uninstall:
+                    for index in range(winreg.QueryInfoKey(uninstall)[0]):
+                        try:
+                            entry = winreg.EnumKey(uninstall, index)
+                            with winreg.OpenKey(uninstall, entry) as metadata:
+                                name = winreg.QueryValueEx(metadata, "DisplayName")[0]
+                                location = winreg.QueryValueEx(metadata, "InstallLocation")[0]
+                        except OSError:
+                            continue
+                        if "inno setup" in str(name).lower() and location:
+                            yield Path(str(location)) / "ISCC.exe"
+            except OSError:
+                continue
 
 
 def release_version(version: str) -> str:

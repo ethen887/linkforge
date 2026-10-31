@@ -268,6 +268,31 @@ def test_gui_reports_formula_stages_without_raw_browser_errors(qt_application: Q
         window.close()
 
 
+def test_gui_reports_editor_wait_and_broken_formula_recovery(qt_application: QApplication) -> None:
+    window = MainWindow(error_presenter=lambda *_args: None)
+    draft_logger = logging.getLogger("linkforge.platforms.chaoxing.written_assignment")
+    previous_level = draft_logger.level
+    try:
+        draft_logger.setLevel(logging.INFO)
+        draft_logger.info("第 %d 题：等待编辑器初始化、已有答案恢复或公式加载", 1)
+        draft_logger.info("第 %d 题：编辑器已就绪，继续生成草稿", 1)
+        draft_logger.warning("第 %d 题：已有公式图片加载失败，公式数据完整，将生成完整草稿后重做", 2)
+        draft_logger.warning(
+            "第 %d 题：等待编辑器就绪超时，原因：%s", 3, "大题编辑器正在初始化，正文尚不可编辑。"
+        )
+        draft_logger.error("PRIVATE-URL PRIVATE-ANSWER")
+        qt_application.processEvents()
+        shown = window.log_edit.toPlainText()
+        assert "第 1 题：等待编辑器初始化" in shown
+        assert "第 1 题：编辑器已就绪" in shown
+        assert "第 2 题：已有公式图片加载失败" in shown
+        assert "第 3 题：等待编辑器就绪超时" in shown
+        assert "PRIVATE-" not in shown
+    finally:
+        draft_logger.setLevel(previous_level)
+        window.close()
+
+
 def test_gui_reports_following_the_selected_course_page(qt_application: QApplication) -> None:
     window = MainWindow(error_presenter=lambda *_args: None)
     navigation_logger = logging.getLogger("linkforge.platforms.chaoxing.navigation")
